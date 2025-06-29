@@ -1,137 +1,74 @@
-import { JsonRpcRequest, JsonRpcResponse, ChatResponse } from './types';
+import { getIdToken } from './firebase';
+
+const getAuthToken = async (): Promise<string | null> => {
+  return getIdToken();
+};
 
 class ApiClient {
-  private idCounter = 1;
+  private baseUrl: string;
 
-  private async makeRequest<T>(method: string, params?: any): Promise<T> {
-    const request: JsonRpcRequest = {
-      jsonrpc: '2.0',
-      id: this.idCounter++,
-      method,
-      params
+  constructor(baseUrl: string = '/api/v1') {
+    this.baseUrl = baseUrl;
+  }
+
+  private async makeRequest<T>(method: string, path: string, body?: any): Promise<T> {
+    const token = await getAuthToken();
+
+    if (!token) {
+      // Or handle this scenario differently, e.g., by redirecting to login
+      // or allowing certain requests to proceed without a token.
+      throw new Error('Authentication token not available. Please log in.');
+    }
+
+    const headers: HeadersInit = {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${token}`,
     };
 
-    const response = await fetch('/api/rpc', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify(request)
-    });
+    const config: RequestInit = {
+      method,
+      headers,
+    };
+
+    if (body) {
+      config.body = JSON.stringify(body);
+    }
+
+    const response = await fetch(`${this.baseUrl}${path}`, config);
 
     if (!response.ok) {
       const errorText = await response.text();
       throw new Error(`HTTP ${response.status}: ${errorText || response.statusText}`);
     }
 
-    const jsonResponse: JsonRpcResponse<T> = await response.json();
-
-    if (jsonResponse.error) {
-      throw new Error(`${jsonResponse.error.message} (Code: ${jsonResponse.error.code})`);
+    if (response.status === 204) { // No content
+      return null as T;
     }
 
-    if (!jsonResponse.result) {
-      throw new Error('No result returned from server');
-    }
-
-    return jsonResponse.result as T;
+    return response.json() as Promise<T>;
   }
 
-  async sendMessage(conversationId: number, content: string, agentType?: string, model?: string, coordination?: boolean) {
-    const response = await this.makeRequest<ChatResponse>('send_message', {
-      conversationId,
-      content,
-      agentType,
-      model,
-      coordination
-    });
-
-    return response;
+  async submitQuery(query: string, sources?: string[], options?: Record<string, any>) {
+    return this.makeRequest<{ task_id: string }>('POST', '/query', { query, sources, options });
   }
 
+  async getTaskStatus(taskId: string) {
+    // Matching TaskStatusResponse in DealerPortal.tsx, though result is still any
+    return this.makeRequest<{ status: string, result?: any, taskId?: string }>('GET', `/task/${taskId}/status`);
+  }
+
+  async submitFeedback(taskId: string, feedback: { rating: number; comment?: string }) {
+    return this.makeRequest<void>('POST', `/task/${taskId}/feedback`, feedback);
+  }
+
+  // Example of keeping an existing function, assuming it will be adapted or removed later
   async getAvailableModels() {
-    return this.makeRequest('available_models', {});
-  }
-
-  async searchMemories(query: string, similarity?: number) {
-    return this.makeRequest('memory_search', {
-      query,
-      similarity
-    });
-  }
-
-  async storeMemory(content: string, metadata?: any) {
-    return this.makeRequest('memory_store', {
-      content,
-      metadata
-    });
-  }
-
-  async listFiles() {
-    return this.makeRequest('file_list');
-  }
-
-  async readFile(path: string) {
-    return this.makeRequest('file_read', { path });
-  }
-
-  async writeFile(path: string, content: string) {
-    return this.makeRequest('file_write', { path, content });
-  }
-
-
-
-  // MCP Integration
-  async getMCPServers() {
-    return await this.makeRequest('mcp_servers', {});
-  }
-
-  async getMCPServerStatus() {
-    return await this.makeRequest('mcp_server_status', {});
-  }
-
-  async executeMCPOperation(server: string, operation: string, params: any) {
-    return await this.makeRequest('mcp_operation', {
-      server,
-      operation,
-      params
-    });
-  }
-
-  async getConversations() {
-    return this.makeRequest('get_conversations');
-  }
-
-  async createConversation(title?: string) {
-    return this.makeRequest('create_conversation', { title });
-  }
-
-  async getMessages(conversationId: number) {
-    return this.makeRequest('get_messages', { conversationId });
-  }
-
-  async getAgents(): Promise<{ agents: any[] }> {
-    return this.makeRequest<{ agents: any[] }>('get_agents');
-  }
-
-  async getServiceStatus() {
-    return this.makeRequest('service_status');
-  }
-
-  async getUserFiles() {
-    return this.makeRequest('get_user_files');
-  }
-
-  async getFileData(fileId: number) {
-    return this.makeRequest('get_file_data', { fileId });
-  }
-
-  async validateDataQuality(fileId: number) {
-    return this.makeRequest('validate_data_quality', { fileId });
+    // This might need to be updated or removed if not part of the new FastAPI backend
+    return this.makeRequest('GET', '/models'); // Assuming a /models endpoint
   }
 
   async healthCheck() {
-    const response = await fetch('/api/health');
+    const response = await fetch('/api/health'); // Assuming this doesn't need auth and isn't under /api/v1
     if (!response.ok) {
       throw new Error(`Health check failed: ${response.status}`);
     }
