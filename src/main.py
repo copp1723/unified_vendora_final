@@ -1,43 +1,42 @@
 #!/usr/bin/env python3
 """
 VENDORA - Automotive AI Data Platform
-Main entry point for the application.
+Main entry point for the FastAPI application.
 """
 
-from enhanced_main import create_app
+import uvicorn
 import os
 from dotenv import load_dotenv
 
 if __name__ == '__main__':
-    # Load environment variables
+    # Load environment variables from .env file
+    # This ensures that environment variables are available for Uvicorn and the FastAPI app startup.
     load_dotenv()
+
+    # Configuration for Uvicorn server
+    # Port and host can also be driven by environment variables if needed
+    host = os.getenv('APP_HOST', '0.0.0.0')
+    port = int(os.getenv('APP_PORT', '8000')) # FastAPI default is often 8000
+    log_level = os.getenv('LOG_LEVEL', 'info').lower()
+    reload_app = os.getenv('RELOAD_APP', 'False').lower() == 'true' # For development
+
+    print("🚀 Starting VENDORA FastAPI platform...")
+    print(f"🌐 Access at: http://{host}:{port}")
+    if reload_app:
+        print("🔥 Application reloading is ENABLED.")
     
-    # Configuration
-    config = {
-        'OPENROUTER_API_KEY': os.getenv('OPENROUTER_API_KEY'),
-        'MAILGUN_PRIVATE_API_KEY': os.getenv('MAILGUN_PRIVATE_API_KEY'),
-        'MAILGUN_DOMAIN': os.getenv('MAILGUN_DOMAIN'),
-        'MAILGUN_SENDING_API_KEY': os.getenv('MAILGUN_SENDING_API_KEY'),
-        'SUPERMEMORY_API_KEY': os.getenv('SUPERMEMORY_API_KEY'),
-        'DATA_STORAGE_PATH': os.getenv('DATA_STORAGE_PATH', './data'),
-        'MEMORY_STORAGE_PATH': os.getenv('MEMORY_STORAGE_PATH', './memory')
-    }
-    
-    # Validate required configuration
-    required_keys = ['OPENROUTER_API_KEY', 'MAILGUN_PRIVATE_API_KEY', 'SUPERMEMORY_API_KEY']
-    missing_keys = [key for key in required_keys if not config.get(key)]
-    
-    if missing_keys:
-        print(f"❌ Missing required configuration: {missing_keys}")
-        print("Please check your .env file")
-        exit(1)
-    
-    # Create and run the app
-    app = create_app(config)
-    
-    print("🚀 Starting VENDORA platform...")
-    print("📊 Automotive AI Data Platform")
-    print("🌐 Access at: http://localhost:5001")
-    
-    app.run(host='0.0.0.0', port=5001, debug=False)
+    # Run Uvicorn server
+    # The string "src.fastapi_main:app" tells Uvicorn:
+    # - Look in the "src" directory (or package)
+    # - Find the file "fastapi_main.py"
+    # - In that file, find the FastAPI application instance named "app"
+    uvicorn.run(
+        "src.fastapi_main:app",
+        host=host,
+        port=port,
+        log_level=log_level,
+        reload=reload_app
+        # If using multiple workers in production, add `workers=N`
+        # workers=int(os.getenv('APP_WORKERS', '1'))
+    )
 
