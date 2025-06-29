@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException, Request, Path
+from fastapi import FastAPI, HTTPException, Request, Path, Depends
 from fastapi_mcp.site import MCPSite
 from fastapi_mcp.application import mcp_app
 from pydantic import BaseModel, Field
@@ -7,6 +7,17 @@ from datetime import datetime
 import asyncio
 import logging
 import re # For input validation
+
+# Import Firebase authentication
+from src.auth.firebase_auth import (
+    get_current_user, 
+    get_current_verified_user,
+    require_dealership_access,
+    initialize_firebase_auth,
+    get_firebase_auth_handler,
+    FirebaseUser,
+    RequireRole
+)
 
 # Configure logging (can be adopted from existing setup or enhanced)
 logging.basicConfig(level=logging.INFO)
@@ -96,7 +107,11 @@ async def health():
     }
 
 @app.post("/api/v1/query", response_model=QueryResponse, tags=["VENDORA API"])
-async def process_query(payload: QueryRequest, request: Request):
+async def process_query(
+    payload: QueryRequest, 
+    request: Request,
+    current_user: FirebaseUser = Depends(get_current_verified_user)
+):
     """
     Main endpoint for processing user queries through the hierarchical flow.
     """
@@ -105,6 +120,14 @@ async def process_query(payload: QueryRequest, request: Request):
 
     if not is_valid_dealership_id(payload.dealership_id):
         raise HTTPException(status_code=400, detail={"error": "Invalid dealership_id format"})
+    
+    # Verify user has access to this dealership
+    if not current_user.custom_claims.get('admin', False):
+        if current_user.dealership_id != payload.dealership_id:
+            raise HTTPException(
+                status_code=403, 
+                detail={"error": "Access denied", "message": f"You don't have access to dealership {payload.dealership_id}"}
+            )
 
     try:
         # Access flow_manager from app.state
@@ -130,7 +153,8 @@ async def process_query(payload: QueryRequest, request: Request):
 @app.get("/api/v1/task/{task_id}/status", response_model=TaskStatusResponse, tags=["VENDORA API"])
 async def get_task_status(
     request: Request,
-    task_id: str = Path(..., title="Task ID", description="The ID of the task to get status for, e.g., TASK-12345")
+    task_id: str = Path(..., title="Task ID", description="The ID of the task to get status for, e.g., TASK-12345"),
+    current_user: FirebaseUser = Depends(get_current_user)
 ):
     """
     Get the status of a specific task.
@@ -159,7 +183,8 @@ async def get_task_status(
 @app.get("/api/v1/agent/{agent_id}/explanation", response_model=Dict[str, Any], tags=["VENDORA API"])
 async def get_agent_explanation(
     request: Request,
-    agent_id: str = Path(..., title="Agent ID", description="ID of the agent for explanation (e.g., 'orchestrator')")
+    agent_id: str = Path(..., title="Agent ID", description="ID of the agent for explanation (e.g., 'orchestrator')"),
+    current_user: FirebaseUser = Depends(get_current_user)
 ):
     """
     Get detailed explanation of an agent's activities.
@@ -179,7 +204,10 @@ async def get_agent_explanation(
         raise HTTPException(status_code=500, detail={"error": "Internal server error"})
 
 @app.get("/api/v1/system/overview", response_model=Dict[str, Any], tags=["VENDORA API"])
-async def get_system_overview(request: Request):
+async def get_system_overview(
+    request: Request,
+    current_user: FirebaseUser = Depends(get_current_user)
+):
     """
     Get system-wide overview.
     """
@@ -194,7 +222,10 @@ async def get_system_overview(request: Request):
         raise HTTPException(status_code=500, detail={"error": "Internal server error"})
 
 @app.get("/api/v1/system/metrics", response_model=Dict[str, Any], tags=["VENDORA API"])
-async def get_system_metrics(request: Request):
+async def get_system_metrics(
+    request: Request,
+    current_user: FirebaseUser = Depends(RequireRole(["admin", "analyst"]))
+):
     """
     Get system metrics.
     """
@@ -210,6 +241,63 @@ async def get_system_metrics(request: Request):
     except Exception as e:
         logger.error(f"Error getting system metrics: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail={"error": "Internal server error"})
+
+# --- Authentication Endpoints ---
+
+class UserInfoResponse(BaseModel):
+    uid: str
+    email: Optional[str]
+    email_verified: bool
+    display_name: Optional[str]
+    dealership_id: Optional[str]
+    roles: list = []
+    is_admin: bool = False
+
+@app.get("/api/v1/auth/me", response_model=UserInfoResponse, tags=["Authentication"])
+async def get_current_user_info(
+    current_user: FirebaseUser = Depends(get_current_user)
+):
+    """
+    Get current authenticated user information.
+    
+    This endpoint returns the user's profile information based on their
+    Firebase authentication token.
+    """
+    return UserInfoResponse(
+        uid=current_user.uid,
+        email=current_user.email,
+        email_verified=current_user.email_verified,
+        display_name=current_user.display_name,
+        dealership_id=current_user.dealership_id,
+        roles=current_user.custom_claims.get('roles', []),
+        is_admin=current_user.custom_claims.get('admin', False)
+    )
+
+class CreateUserRequest(BaseModel):
+    email: str
+    password: str
+    display_name: Optional[str] = None
+    dealership_id: Optional[str] = None
+
+@app.post("/api/v1/auth/users", tags=["Authentication"], include_in_schema=False)
+async def create_user(
+    user_data: CreateUserRequest,
+    current_user: FirebaseUser = Depends(RequireRole(["admin"]))
+):
+    """
+    Create a new user (Admin only).
+    
+    This endpoint is typically not exposed in production and should be
+    handled through Firebase Console or Admin SDK directly.
+    """
+    auth_handler = get_firebase_auth_handler()
+    result = await auth_handler.create_user(
+        email=user_data.email,
+        password=user_data.password,
+        display_name=user_data.display_name,
+        dealership_id=user_data.dealership_id
+    )
+    return result
 
 @app.post("/api/v1/webhook/mailgun", status_code=200, tags=["Webhooks"])
 async def mailgun_webhook(request: Request):
@@ -307,6 +395,8 @@ async def startup_event():
         'BIGQUERY_PROJECT': os.getenv('BIGQUERY_PROJECT', 'vendora-analytics'), # Used by HierarchicalFlowManager
         'MAILGUN_PRIVATE_API_KEY': os.getenv('MAILGUN_PRIVATE_API_KEY'), # Used by MailgunHandler
         'MAILGUN_DOMAIN': os.getenv('MAILGUN_DOMAIN'), # Used by MailgunHandler
+        'FIREBASE_PROJECT_ID': os.getenv('FIREBASE_PROJECT_ID', 'vendora-analytics'), # Firebase project ID
+        'FIREBASE_SERVICE_ACCOUNT_PATH': os.getenv('FIREBASE_SERVICE_ACCOUNT_PATH'), # Optional service account
         'MAILGUN_SENDING_API_KEY': os.getenv('MAILGUN_SENDING_API_KEY'), # Used by MailgunHandler for sending
         'SUPERMEMORY_API_KEY': os.getenv('SUPERMEMORY_API_KEY'), # Used by SuperMemory client if ConversationAgent uses it
         'DATA_STORAGE_PATH': os.getenv('DATA_STORAGE_PATH', './data'),
@@ -333,6 +423,16 @@ async def startup_event():
         return
 
     try:
+        # Initialize Firebase Authentication
+        try:
+            initialize_firebase_auth(app_config)
+            logger.info("✅ Firebase Authentication initialized.")
+        except Exception as e:
+            logger.error(f"Failed to initialize Firebase Auth: {e}")
+            # Continue without auth in development mode
+            if os.getenv('ENVIRONMENT') != 'development':
+                raise
+        
         # Initialize hierarchical flow manager
         flow_config_params = {
             "gemini_api_key": app_config.get('GEMINI_API_KEY'),

@@ -1,0 +1,1 @@
+"""Firebase Authentication module for VENDORA"""
