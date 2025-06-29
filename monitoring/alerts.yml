@@ -1,0 +1,120 @@
+# VENDORA Alert Rules
+groups:
+  - name: vendora_api_alerts
+    interval: 30s
+    rules:
+      # High error rate alert
+      - alert: HighErrorRate
+        expr: rate(vendora_queries_failed_total[5m]) > 0.05
+        for: 5m
+        labels:
+          severity: warning
+          component: api
+        annotations:
+          summary: "High error rate detected"
+          description: "Error rate is {{ $value | humanizePercentage }} over the last 5 minutes"
+
+      # Slow query processing
+      - alert: SlowQueryProcessing
+        expr: histogram_quantile(0.95, rate(vendora_query_duration_seconds_bucket[5m])) > 10
+        for: 5m
+        labels:
+          severity: warning
+          component: processing
+        annotations:
+          summary: "Slow query processing detected"
+          description: "95th percentile query processing time is {{ $value }}s"
+
+      # Low approval rate
+      - alert: LowApprovalRate
+        expr: rate(vendora_insights_approved_total[1h]) / rate(vendora_queries_total[1h]) < 0.8
+        for: 15m
+        labels:
+          severity: critical
+          component: quality
+        annotations:
+          summary: "Low insight approval rate"
+          description: "Approval rate is {{ $value | humanizePercentage }} over the last hour"
+
+      # Agent stuck
+      - alert: AgentStuck
+        expr: vendora_agent_status{status="blocked"} == 1
+        for: 10m
+        labels:
+          severity: warning
+          component: agents
+        annotations:
+          summary: "Agent {{ $labels.agent_id }} is stuck"
+          description: "Agent has been in blocked state for more than 10 minutes"
+
+      # High revision rate
+      - alert: HighRevisionRate
+        expr: rate(vendora_insights_revised_total[1h]) / rate(vendora_insights_total[1h]) > 0.3
+        for: 15m
+        labels:
+          severity: warning
+          component: quality
+        annotations:
+          summary: "High revision rate detected"
+          description: "{{ $value | humanizePercentage }} of insights require revision"
+
+  - name: vendora_system_alerts
+    interval: 30s
+    rules:
+      # High memory usage
+      - alert: HighMemoryUsage
+        expr: (node_memory_MemTotal_bytes - node_memory_MemAvailable_bytes) / node_memory_MemTotal_bytes > 0.9
+        for: 5m
+        labels:
+          severity: critical
+          component: system
+        annotations:
+          summary: "High memory usage detected"
+          description: "Memory usage is {{ $value | humanizePercentage }}"
+
+      # High CPU usage
+      - alert: HighCPUUsage
+        expr: 100 - (avg by (instance) (irate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 85
+        for: 5m
+        labels:
+          severity: warning
+          component: system
+        annotations:
+          summary: "High CPU usage detected"
+          description: "CPU usage is {{ $value }}%"
+
+      # Service down
+      - alert: VendoraServiceDown
+        expr: up{job="vendora-api"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          component: api
+        annotations:
+          summary: "VENDORA service is down"
+          description: "VENDORA API has been down for more than 1 minute"
+
+  - name: vendora_business_alerts
+    interval: 1m
+    rules:
+      # Unusual query volume
+      - alert: UnusualQueryVolume
+        expr: abs(rate(vendora_queries_total[10m]) - rate(vendora_queries_total[10m] offset 1h)) > 2 * stddev_over_time(rate(vendora_queries_total[10m])[1h:10m])
+        for: 15m
+        labels:
+          severity: info
+          component: business
+        annotations:
+          summary: "Unusual query volume detected"
+          description: "Query volume has deviated significantly from normal patterns"
+
+      # Complex query spike
+      - alert: ComplexQuerySpike
+        expr: rate(vendora_queries_total{complexity="complex"}[10m]) > 2 * avg_over_time(rate(vendora_queries_total{complexity="complex"}[10m])[1h:10m])
+        for: 10m
+        labels:
+          severity: warning
+          component: business
+        annotations:
+          summary: "Spike in complex queries"
+          description: "Complex query rate is {{ $value }} per second"
