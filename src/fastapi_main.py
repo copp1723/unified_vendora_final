@@ -1,8 +1,8 @@
-from fastapi import FastAPI, HTTPException, Request, Path, Depends
+from fastapi import FastAPI, HTTPException, Request, Path, Depends, status
 from fastapi_mcp.site import MCPSite
 from fastapi_mcp.application import mcp_app
 from pydantic import BaseModel, Field
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 from datetime import datetime
 import asyncio
 import logging
@@ -19,30 +19,30 @@ from src.auth.firebase_auth import (
     RequireRole
 )
 
+# Import refined Pydantic models
+from src.models.api_models import (
+    QueryRequest,
+    QueryResponse,
+    ErrorResponse,
+    ErrorDetail,
+    TaskStatusResponse,
+    AgentExplanationResponse,
+    SystemOverviewResponse,
+    SystemMetricsResponse,
+    UserInfoResponse,
+    CreateUserRequest,
+    CreateUserResponse,
+    MailgunWebhookResponse,
+    QueryMetadata,
+    DataVisualization,
+    TaskComplexity,
+    InsightStatus,
+    ConfidenceLevel
+)
+
 # Configure logging (can be adopted from existing setup or enhanced)
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
-
-# --- Pydantic Models for Request and Response bodies ---
-class QueryRequest(BaseModel):
-    query: str
-    dealership_id: str
-    context: Optional[Dict[str, Any]] = {}
-
-class QueryResponse(BaseModel): # Assuming a flexible structure for now
-    # Define fields based on expected output from flow_manager.process_user_query
-    # Example:
-    result_data: Dict[str, Any]
-    message: Optional[str] = None
-
-class ErrorResponse(BaseModel):
-    error: str
-    message: Optional[str] = None
-
-class TaskStatusResponse(BaseModel): # Assuming a flexible structure
-    # Define fields based on expected output from flow_manager.get_flow_status
-    status: Dict[str, Any]
-    message: Optional[str] = None
 
 # Basic configuration for FastAPI-MCP (can be expanded later)
 MCP_CONFIG = {
@@ -63,7 +63,10 @@ app = FastAPI(
         500: {"model": ErrorResponse, "description": "Internal Server Error"},
         504: {"model": ErrorResponse, "description": "Gateway Timeout / Query Processing Timeout"},
         400: {"model": ErrorResponse, "description": "Bad Request"},
+        401: {"model": ErrorResponse, "description": "Unauthorized - Invalid or missing authentication"},
+        403: {"model": ErrorResponse, "description": "Forbidden - Insufficient permissions"},
         404: {"model": ErrorResponse, "description": "Not Found"},
+        503: {"model": ErrorResponse, "description": "Service Unavailable"},
     }
 )
 
@@ -91,10 +94,12 @@ def is_valid_task_id(task_id: str) -> bool:
 
 
 # --- API Endpoints ---
-@app.get("/health", tags=["System"])
+@app.get("/health", tags=["System"], response_model=Dict[str, Any])
 async def health():
     """
     Health check endpoint for the FastAPI application.
+    
+    Returns system health status and component availability.
     """
     return {
         "status": "healthy" if app.state.initialized else "initializing",
@@ -102,8 +107,10 @@ async def health():
         "components": {
             "flow_manager": app.state.flow_manager is not None,
             "explainability_engine": app.state.explainability_engine is not None,
+            "firebase_auth": True,  # Always true if endpoint is reached
             "mcp_enabled": True
-        }
+        },
+        "version": "1.0.0"
     }
 
 @app.post("/api/v1/query", response_model=QueryResponse, tags=["VENDORA API"])
@@ -116,7 +123,10 @@ async def process_query(
     Main endpoint for processing user queries through the hierarchical flow.
     """
     if not app.state.initialized or not app.state.flow_manager:
-        raise HTTPException(status_code=503, detail={"error": "Service unavailable", "message": "System is not initialized."})
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=ErrorDetail(error="Service unavailable", message="System is not initialized.").dict()
+        )
 
     if not is_valid_dealership_id(payload.dealership_id):
         raise HTTPException(status_code=400, detail={"error": "Invalid dealership_id format"})
@@ -139,9 +149,32 @@ async def process_query(
             ),
             timeout=30.0  # 30 second timeout
         )
-        # Assuming result is a dict compatible with QueryResponse
-        # Modify QueryResponse model if the structure is different
-        return QueryResponse(result_data=result)
+        
+        # Check if result contains an error
+        if "error" in result:
+            error_detail = ErrorDetail(
+                error=result.get("error", "Processing failed"),
+                message=result.get("message"),
+                task_id=result.get("task_id"),
+                suggestions=result.get("suggestions"),
+                quality_score=result.get("quality_score")
+            )
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=error_detail.dict(exclude_none=True)
+            )
+        
+        # Transform result to match QueryResponse model
+        response = QueryResponse(
+            summary=result["summary"],
+            detailed_insight=result["detailed_insight"],
+            data_visualization=result.get("data_visualization"),
+            confidence_level=result["confidence_level"],
+            data_sources=result.get("data_sources", []),
+            generated_at=result.get("generated_at", datetime.now()),
+            metadata=QueryMetadata(**result["metadata"])
+        )
+        return response
 
     except asyncio.TimeoutError:
         logger.warning(f"Query processing timed out for dealership: {payload.dealership_id}")
@@ -160,7 +193,10 @@ async def get_task_status(
     Get the status of a specific task.
     """
     if not app.state.initialized or not app.state.flow_manager:
-        raise HTTPException(status_code=503, detail={"error": "Service unavailable", "message": "System is not initialized."})
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=ErrorDetail(error="Service unavailable", message="System is not initialized.").dict()
+        )
 
     if not is_valid_task_id(task_id):
         raise HTTPException(status_code=400, detail={"error": "Invalid task ID format", "message": "Task ID must start with 'TASK-'."})
@@ -169,10 +205,13 @@ async def get_task_status(
         status = await app.state.flow_manager.get_flow_status(task_id)
 
         if status:
-            # Assuming status is a dict compatible with TaskStatusResponse
-            return TaskStatusResponse(status=status)
+            # Transform to TaskStatusResponse
+            return TaskStatusResponse(**status)
         else:
-            raise HTTPException(status_code=404, detail={"error": "Task not found"})
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, 
+                detail=ErrorDetail(error="Task not found", message=f"No task found with ID {task_id}").dict()
+            )
 
     except HTTPException: # Re-raise HTTPExceptions directly
         raise
@@ -190,18 +229,31 @@ async def get_agent_explanation(
     Get detailed explanation of an agent's activities.
     """
     if not app.state.initialized or not app.state.explainability_engine:
-        raise HTTPException(status_code=503, detail={"error": "Service unavailable", "message": "Explainability engine is not initialized."})
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE, 
+            detail=ErrorDetail(error="Service unavailable", message="Explainability engine is not initialized.").dict()
+        )
 
     valid_agents = ['orchestrator', 'data_analyst', 'senior_analyst', 'master_analyst']
     if agent_id not in valid_agents:
-        raise HTTPException(status_code=400, detail={"error": f"Invalid agent_id. Valid agents: {valid_agents}"})
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, 
+            detail=ErrorDetail(
+                error="Invalid agent_id", 
+                message=f"Valid agents: {', '.join(valid_agents)}"
+            ).dict()
+        )
 
     try:
-        explanation = app.state.explainability_engine.get_agent_explanation(agent_id) # This is synchronous in Flask, ensure it's okay or make async
-        return explanation
+        explanation = app.state.explainability_engine.get_agent_explanation(agent_id)
+        # Transform to AgentExplanationResponse
+        return AgentExplanationResponse(**explanation)
     except Exception as e:
         logger.error(f"Error getting agent explanation for {agent_id}: {str(e)}", exc_info=True)
-        raise HTTPException(status_code=500, detail={"error": "Internal server error"})
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, 
+            detail=ErrorDetail(error="Internal server error").dict()
+        )
 
 @app.get("/api/v1/system/overview", response_model=Dict[str, Any], tags=["VENDORA API"])
 async def get_system_overview(
@@ -215,11 +267,15 @@ async def get_system_overview(
         raise HTTPException(status_code=503, detail={"error": "Service unavailable", "message": "Explainability engine is not initialized."})
 
     try:
-        overview = app.state.explainability_engine.get_system_overview() # This is synchronous in Flask
-        return overview
+        overview = app.state.explainability_engine.get_system_overview()
+        # Transform to SystemOverviewResponse
+        return SystemOverviewResponse(**overview)
     except Exception as e:
         logger.error(f"Error getting system overview: {str(e)}", exc_info=True)
-        raise HTTPException(status_code=500, detail={"error": "Internal server error"})
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, 
+            detail=ErrorDetail(error="Internal server error").dict()
+        )
 
 @app.get("/api/v1/system/metrics", response_model=Dict[str, Any], tags=["VENDORA API"])
 async def get_system_metrics(
@@ -234,24 +290,18 @@ async def get_system_metrics(
 
     try:
         flow_metrics = await app.state.flow_manager.get_metrics()
-        return {
-            "flow_metrics": flow_metrics,
-            "timestamp": datetime.now().isoformat()
-        }
+        return SystemMetricsResponse(
+            flow_metrics=flow_metrics,
+            timestamp=datetime.now()
+        )
     except Exception as e:
         logger.error(f"Error getting system metrics: {str(e)}", exc_info=True)
-        raise HTTPException(status_code=500, detail={"error": "Internal server error"})
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, 
+            detail=ErrorDetail(error="Internal server error").dict()
+        )
 
 # --- Authentication Endpoints ---
-
-class UserInfoResponse(BaseModel):
-    uid: str
-    email: Optional[str]
-    email_verified: bool
-    display_name: Optional[str]
-    dealership_id: Optional[str]
-    roles: list = []
-    is_admin: bool = False
 
 @app.get("/api/v1/auth/me", response_model=UserInfoResponse, tags=["Authentication"])
 async def get_current_user_info(
@@ -273,13 +323,7 @@ async def get_current_user_info(
         is_admin=current_user.custom_claims.get('admin', False)
     )
 
-class CreateUserRequest(BaseModel):
-    email: str
-    password: str
-    display_name: Optional[str] = None
-    dealership_id: Optional[str] = None
-
-@app.post("/api/v1/auth/users", tags=["Authentication"], include_in_schema=False)
+@app.post("/api/v1/auth/users", response_model=CreateUserResponse, tags=["Authentication"], include_in_schema=False)
 async def create_user(
     user_data: CreateUserRequest,
     current_user: FirebaseUser = Depends(RequireRole(["admin"]))
@@ -354,14 +398,17 @@ async def mailgun_webhook(request: Request):
             )
             logger.info(f"Mailgun webhook: Insight email sent to {result['sender']}")
 
-        return {"status": "processed"}
+        return MailgunWebhookResponse(status="processed", message="Email processed successfully")
 
     except Exception as e:
         logger.error(f"Error processing mailgun webhook: {str(e)}", exc_info=True)
         # Return a 200 as per Mailgun's recommendation to avoid retries for application errors,
         # but log the error thoroughly. Or choose a 500 if preferred.
         # The original Flask app returned 500. Let's stick to that for now.
-        raise HTTPException(status_code=500, detail={"error": "Webhook processing failed"})
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, 
+            detail=ErrorDetail(error="Webhook processing failed", message=str(e)).dict()
+        )
 
 import os
 from dotenv import load_dotenv
