@@ -1,0 +1,891 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --background: hsl(210, 11%, 98%);
+  --foreground: hsl(215, 16%, 14%);
+  --muted: hsl(210, 11%, 96%);
+  --muted-foreground: hsl(215, 10%, 44%);
+  --popover: hsl(0, 0%, 100%);
+  --popover-foreground: hsl(215, 16%, 14%);
+  --card: hsl(0, 0%, 100%);
+  --card-foreground: hsl(215, 16%, 14%);
+  --border: hsl(215, 12%, 87%);
+  --input: hsl(215, 12%, 87%);
+  --primary: hsl(215, 16%, 14%);
+  --primary-foreground: hsl(0, 0%, 98%);
+  --secondary: hsl(210, 11%, 96%);
+  --secondary-foreground: hsl(215, 16%, 14%);
+  --accent: hsl(210, 11%, 94%);
+  --accent-foreground: hsl(215, 16%, 14%);
+  --destructive: hsl(0, 84%, 60%);
+  --destructive-foreground: hsl(60, 9%, 98%);
+  --ring: hsl(215, 16%, 14%);
+  --radius: 0.5rem;
+
+  /* Enhanced marble palette with strategic accent colors */
+  --marble-50: hsl(220, 25%, 99%);
+  --marble-100: hsl(220, 22%, 97%);
+  --marble-200: hsl(220, 18%, 94%);
+  --marble-300: hsl(220, 16%, 88%);
+  --marble-400: hsl(220, 14%, 78%);
+  --marble-500: hsl(220, 15%, 65%);
+  --marble-600: hsl(220, 18%, 48%);
+  --marble-700: hsl(220, 22%, 34%);
+  --marble-800: hsl(220, 26%, 24%);
+  --marble-900: hsl(220, 30%, 16%);
+
+  /* Strategic accent colors for visual appeal */
+  --accent-blue: hsl(210, 100%, 56%);
+  --accent-blue-light: hsl(210, 100%, 92%);
+  --accent-emerald: hsl(160, 84%, 39%);
+  --accent-emerald-light: hsl(160, 84%, 93%);
+  --accent-amber: hsl(45, 93%, 47%);
+  --accent-amber-light: hsl(45, 93%, 94%);
+  --accent-rose: hsl(351, 83%, 61%);
+  --accent-rose-light: hsl(351, 83%, 94%);
+
+  /* Premium gradients with enhanced depth */
+  --gradient-subtle: linear-gradient(135deg, 
+    hsl(220, 25%, 99%) 0%, 
+    hsl(220, 22%, 97%) 20%, 
+    hsl(220, 18%, 95%) 60%, 
+    hsl(220, 16%, 93%) 100%);
+
+  --gradient-card: linear-gradient(145deg, 
+    hsl(0, 0%, 100%) 0%, 
+    hsl(220, 25%, 99%) 15%, 
+    hsl(220, 22%, 97%) 50%, 
+    hsl(220, 18%, 95%) 85%, 
+    hsl(220, 16%, 93%) 100%);
+
+  --gradient-header: linear-gradient(135deg, 
+    hsl(220, 25%, 99%) 0%, 
+    hsl(220, 20%, 96%) 25%, 
+    hsl(220, 18%, 93%) 65%, 
+    hsl(220, 16%, 90%) 100%);
+
+  --gradient-agent: linear-gradient(135deg, 
+    hsl(210, 100%, 98%) 0%, 
+    hsl(220, 60%, 96%) 35%, 
+    hsl(230, 40%, 94%) 70%, 
+    hsl(240, 25%, 92%) 100%);
+
+  --gradient-message: linear-gradient(145deg, 
+    hsl(0, 0%, 100%) 0%, 
+    hsl(220, 22%, 98%) 50%, 
+    hsl(220, 20%, 96%) 100%);
+
+  --gradient-accent: linear-gradient(135deg, 
+    var(--accent-blue-light) 0%, 
+    hsl(210, 100%, 96%) 50%, 
+    hsl(220, 18%, 97%) 100%);
+
+  /* Enhanced shadows with depth layers */
+  --shadow-soft: 
+    0 1px 3px 0 rgba(0, 0, 0, 0.05), 
+    0 2px 8px -1px rgba(0, 0, 0, 0.08), 
+    0 4px 16px -4px rgba(0, 0, 0, 0.10);
+
+  --shadow-medium: 
+    0 2px 6px -1px rgba(0, 0, 0, 0.08), 
+    0 4px 12px -2px rgba(0, 0, 0, 0.12), 
+    0 8px 32px -6px rgba(0, 0, 0, 0.16);
+
+  --shadow-large: 
+    0 4px 12px -2px rgba(0, 0, 0, 0.10), 
+    0 8px 24px -4px rgba(0, 0, 0, 0.14), 
+    0 16px 64px -12px rgba(0, 0, 0, 0.20);
+
+  --shadow-accent: 
+    0 2px 4px -1px rgba(59, 130, 246, 0.1), 
+    0 4px 8px -2px rgba(59, 130, 246, 0.15), 
+    0 8px 24px -6px rgba(59, 130, 246, 0.2);
+}
+
+.dark {
+  --background: hsl(222, 23%, 11%);
+  --foreground: hsl(210, 40%, 96%);
+  --muted: hsl(217, 20%, 17%);
+  --muted-foreground: hsl(215, 20%, 65%);
+  --popover: hsl(222, 23%, 11%);
+  --popover-foreground: hsl(210, 40%, 96%);
+  --card: hsl(222, 23%, 13%);
+  --card-foreground: hsl(210, 40%, 96%);
+  --border: hsl(217, 20%, 20%);
+  --input: hsl(217, 20%, 17%);
+  --primary: hsl(210, 40%, 96%);
+  --primary-foreground: hsl(222, 23%, 11%);
+  --secondary: hsl(217, 20%, 17%);
+  --secondary-foreground: hsl(210, 40%, 96%);
+  --accent: hsl(217, 20%, 19%);
+  --accent-foreground: hsl(210, 40%, 96%);
+  --destructive: hsl(0, 62%, 50%);
+  --destructive-foreground: hsl(210, 40%, 96%);
+  --ring: hsl(217, 20%, 60%);
+
+  /* Dark mode marble palette with enhanced contrast */
+  --marble-50: hsl(217, 24%, 24%);
+  --marble-100: hsl(217, 22%, 19%);
+  --marble-200: hsl(217, 20%, 26%);
+  --marble-300: hsl(217, 18%, 32%);
+  --marble-400: hsl(217, 16%, 48%);
+  --marble-500: hsl(217, 18%, 62%);
+  --marble-600: hsl(217, 20%, 72%);
+  --marble-700: hsl(217, 18%, 82%);
+  --marble-800: hsl(217, 16%, 90%);
+  --marble-900: hsl(210, 40%, 96%);
+
+  /* Dark mode strategic accents */
+  --accent-blue: hsl(210, 100%, 60%);
+  --accent-blue-light: hsl(210, 100%, 15%);
+  --accent-emerald: hsl(160, 84%, 45%);
+  --accent-emerald-light: hsl(160, 84%, 12%);
+  --accent-amber: hsl(45, 93%, 53%);
+  --accent-amber-light: hsl(45, 93%, 13%);
+  --accent-rose: hsl(351, 83%, 65%);
+  --accent-rose-light: hsl(351, 83%, 13%);
+
+  /* Enhanced dark mode gradients */
+  --gradient-subtle: linear-gradient(135deg, 
+    hsl(222, 23%, 11%) 0%, 
+    hsl(222, 23%, 13%) 30%, 
+    hsl(217, 20%, 15%) 70%, 
+    hsl(217, 18%, 17%) 100%);
+
+  --gradient-card: linear-gradient(145deg, 
+    hsl(222, 23%, 13%) 0%, 
+    hsl(217, 22%, 15%) 25%, 
+    hsl(217, 20%, 17%) 75%, 
+    hsl(217, 18%, 19%) 100%);
+
+  --gradient-header: linear-gradient(135deg, 
+    hsl(217, 22%, 15%) 0%, 
+    hsl(217, 20%, 17%) 40%, 
+    hsl(217, 18%, 19%) 80%, 
+    hsl(217, 16%, 21%) 100%);
+
+  --gradient-agent: linear-gradient(135deg, 
+    hsl(210, 40%, 15%) 0%, 
+    hsl(220, 35%, 17%) 35%, 
+    hsl(230, 25%, 19%) 70%, 
+    hsl(240, 20%, 21%) 100%);
+
+  --gradient-message: linear-gradient(145deg, 
+    hsl(222, 23%, 13%) 0%, 
+    hsl(217, 22%, 16%) 50%, 
+    hsl(217, 20%, 18%) 100%);
+
+  --gradient-accent: linear-gradient(135deg, 
+    var(--accent-blue-light) 0%, 
+    hsl(210, 40%, 14%) 50%, 
+    hsl(222, 23%, 13%) 100%);
+
+  /* Enhanced dark mode shadows */
+  --shadow-soft: 
+    0 1px 3px 0 rgba(0, 0, 0, 0.2), 
+    0 2px 6px -1px rgba(0, 0, 0, 0.3), 
+    0 4px 12px -4px rgba(0, 0, 0, 0.4);
+
+  --shadow-medium: 
+    0 2px 4px -1px rgba(0, 0, 0, 0.3), 
+    0 4px 8px -2px rgba(0, 0, 0, 0.4), 
+    0 8px 24px -6px rgba(0, 0, 0, 0.5);
+
+  --shadow-large: 
+    0 4px 8px -2px rgba(0, 0, 0, 0.4), 
+    0 8px 16px -4px rgba(0, 0, 0, 0.5), 
+    0 16px 48px -12px rgba(0, 0, 0, 0.6);
+
+  --shadow-accent: 
+    0 2px 4px -1px rgba(59, 130, 246, 0.2), 
+    0 4px 8px -2px rgba(59, 130, 246, 0.3), 
+    0 8px 24px -6px rgba(59, 130, 246, 0.4);
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply font-sans antialiased bg-background text-foreground;
+    font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
+    font-optical-sizing: auto;
+    transition: background-color 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94), color 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+    line-height: 1.6;
+    letter-spacing: -0.011em;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    font-weight: 600;
+    letter-spacing: -0.025em;
+    line-height: 1.3;
+  }
+
+  h1 { 
+    font-size: 2.75rem; 
+    line-height: 1.2;
+    font-weight: 700;
+  }
+  h2 { 
+    font-size: 2.25rem; 
+    line-height: 1.25;
+    font-weight: 650;
+  }
+  h3 { 
+    font-size: 1.875rem; 
+    line-height: 1.3;
+  }
+  h4 { 
+    font-size: 1.5rem; 
+    line-height: 1.35;
+  }
+  h5 { 
+    font-size: 1.25rem; 
+    line-height: 1.4;
+  }
+  h6 { 
+    font-size: 1.125rem; 
+    line-height: 1.45;
+  }
+
+  /* Executive-friendly text sizes */
+  .text-executive-large {
+    font-size: 1.375rem;
+    line-height: 1.5;
+    font-weight: 500;
+  }
+
+  .text-executive-medium {
+    font-size: 1.125rem;
+    line-height: 1.6;
+    font-weight: 450;
+  }
+
+  .text-executive-body {
+    font-size: 1rem;
+    line-height: 1.7;
+    font-weight: 400;
+  }
+
+  /* Smooth theme transitions */
+  * {
+    transition: background-color 0.3s ease, border-color 0.3s ease, color 0.3s ease;
+  }
+
+  /* Enhanced marble utilities with strategic accents */
+  .marble-bg {
+    background: var(--gradient-subtle);
+  }
+
+  .marble-card {
+    background: var(--gradient-card);
+    border: 1px solid var(--marble-200);
+    box-shadow: var(--shadow-soft);
+    backdrop-filter: blur(12px) saturate(160%);
+    border-radius: 16px;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .marble-card::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, var(--accent-blue), transparent);
+    opacity: 0.6;
+  }
+
+  .marble-card-elevated {
+    background: var(--gradient-card);
+    border: 1px solid var(--marble-200);
+    box-shadow: var(--shadow-medium);
+    backdrop-filter: blur(16px) saturate(170%);
+    border-radius: 18px;
+    position: relative;
+    overflow: hidden;
+    transform: translateY(-2px);
+  }
+
+  .marble-card-elevated::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, var(--accent-blue), transparent);
+    opacity: 0.8;
+  }
+
+  .marble-card-floating {
+    background: var(--gradient-card);
+    border: 1px solid var(--marble-200);
+    box-shadow: var(--shadow-large);
+    backdrop-filter: blur(20px) saturate(180%);
+    border-radius: 20px;
+    position: relative;
+    overflow: hidden;
+    transform: translateY(-4px);
+  }
+
+  .marble-card-floating::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 2px;
+    background: linear-gradient(90deg, transparent, var(--accent-blue), var(--accent-emerald), transparent);
+    opacity: 1;
+  }
+
+  .marble-card-accent {
+    background: var(--gradient-accent);
+    border: 1px solid var(--accent-blue);
+    box-shadow: var(--shadow-accent);
+    backdrop-filter: blur(12px) saturate(160%);
+    border-radius: 12px;
+  }
+
+  .marble-text-primary {
+    color: var(--foreground);
+    font-weight: 600;
+    letter-spacing: -0.01em;
+  }
+
+  .marble-text-secondary {
+    color: var(--muted-foreground);
+    font-weight: 500;
+    letter-spacing: -0.005em;
+  }
+
+  .marble-text-muted {
+    color: var(--marble-500);
+    font-weight: 400;
+    letter-spacing: 0;
+  }
+
+  .marble-text-accent {
+    color: var(--accent-blue);
+    font-weight: 600;
+    letter-spacing: -0.01em;
+  }
+
+  .marble-border {
+    border-color: var(--marble-200);
+  }
+
+  .marble-border-soft {
+    border-color: var(--marble-150);
+  }
+
+  .marble-border-accent {
+    border-color: var(--accent-blue);
+  }
+
+  /* Strategic accent backgrounds */
+  .accent-blue-bg {
+    background: var(--accent-blue-light);
+    border: 1px solid var(--accent-blue);
+  }
+
+  .accent-emerald-bg {
+    background: var(--accent-emerald-light);
+    border: 1px solid var(--accent-emerald);
+  }
+
+  .accent-amber-bg {
+    background: var(--accent-amber-light);
+    border: 1px solid var(--accent-amber);
+  }
+
+  .accent-rose-bg {
+    background: var(--accent-rose-light);
+    border: 1px solid var(--accent-rose);
+  }
+
+  /* Enhanced focus states with accessibility */
+  .marble-focus {
+    @apply focus:outline-none focus:ring-2 focus:ring-blue-400/60 focus:border-blue-300 transition-all duration-200 ease-out;
+    outline-offset: 2px;
+  }
+
+  .marble-focus-accent {
+    @apply focus:outline-none focus:ring-2 focus:ring-blue-500/70 focus:border-blue-400 transition-all duration-200 ease-out;
+    outline-offset: 2px;
+  }
+
+  /* Enhanced transitions with easing */
+  .marble-transition {
+    transition: all 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+  }
+
+  .marble-transition-fast {
+    transition: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  .marble-transition-smooth {
+    transition: all 0.4s cubic-bezier(0.23, 1, 0.32, 1);
+  }
+
+  /* Micro-interactions */
+  .marble-hover {
+    transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  .marble-hover:hover {
+    transform: translateY(-1px) scale(1.01);
+    box-shadow: var(--shadow-medium);
+  }
+
+  .marble-press {
+    transition: transform 0.1s ease-out;
+  }
+
+  .marble-press:active {
+    transform: translateY(0) scale(0.98);
+  }
+
+  /* Status indicators */
+  .status-active {
+    @apply bg-green-500;
+  }
+
+  .status-limited {
+    @apply bg-yellow-500;
+  }
+
+  .status-error {
+    @apply bg-red-500;
+  }
+}
+
+/* Enhanced scrollbar styling */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--muted);
+  border-radius: 8px;
+  margin: 4px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: linear-gradient(135deg, var(--marble-400), var(--marble-500));
+  border-radius: 8px;
+  border: 2px solid var(--muted);
+  transition: all 0.3s ease;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(135deg, var(--accent-blue), var(--marble-500));
+  transform: scale(1.1);
+}
+
+::-webkit-scrollbar-corner {
+  background: var(--muted);
+  border-radius: 8px;
+}
+
+/* Enhanced text selection */
+::selection {
+  background: var(--accent-blue);
+  color: white;
+  text-shadow: none;
+}
+
+::-moz-selection {
+  background: var(--accent-blue);
+  color: white;
+  text-shadow: none;
+}
+
+/* Enhanced utility classes */
+  .full-height {
+    height: 100vh;
+    min-height: 100vh;
+  }
+
+  .fill-available {
+    flex: 1;
+    min-height: 0;
+    min-width: 0;
+  }
+
+  .glass-effect {
+    backdrop-filter: blur(16px) saturate(190%);
+    background: rgba(255, 255, 255, 0.85);
+    border: 1px solid rgba(255, 255, 255, 0.25);
+    box-shadow: 
+      inset 0 1px 0 0 rgba(255, 255, 255, 0.4),
+      0 1px 3px 0 rgba(0, 0, 0, 0.1),
+      0 1px 2px 0 rgba(0, 0, 0, 0.06);
+  }
+
+.glass-effect-dark {
+  backdrop-filter: blur(16px) saturate(190%);
+  background: rgba(0, 0, 0, 0.4);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: 
+    inset 0 1px 0 0 rgba(255, 255, 255, 0.1),
+    0 1px 3px 0 rgba(0, 0, 0, 0.3),
+    0 1px 2px 0 rgba(0, 0, 0, 0.2);
+}
+
+.text-gradient {
+  background: linear-gradient(135deg, var(--marble-800), var(--marble-600), var(--accent-blue));
+  background-clip: text;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-size: 200% 200%;
+  animation: gradientShift 3s ease-in-out infinite;
+}
+
+.text-gradient-accent {
+  background: linear-gradient(135deg, var(--accent-blue), var(--accent-emerald), var(--accent-blue));
+  background-clip: text;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-size: 200% 200%;
+  animation: gradientShift 4s ease-in-out infinite;
+}
+
+.status-indicator {
+  position: relative;
+  display: inline-block;
+  border-radius: 50%;
+}
+
+.status-indicator::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 120%;
+  height: 120%;
+  border-radius: inherit;
+  opacity: 0.6;
+  animation: statusPulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+/* Enhanced visual elements */
+.marble-glow {
+  position: relative;
+}
+
+.marble-glow::before {
+  content: '';
+  position: absolute;
+  inset: -1px;
+  background: linear-gradient(135deg, var(--accent-blue), var(--accent-emerald));
+  border-radius: inherit;
+  z-index: -1;
+  opacity: 0.3;
+  filter: blur(2px);
+}
+
+/* Enhanced chat animations with better easing */
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(32px) scale(0.92);
+    filter: blur(4px);
+  }
+  50% {
+    opacity: 0.8;
+    transform: translateY(8px) scale(0.98);
+    filter: blur(1px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+    filter: blur(0);
+  }
+}
+
+@keyframes slideInLeft {
+  from {
+    opacity: 0;
+    transform: translateX(-40px) scale(0.94);
+    filter: blur(3px);
+  }
+  50% {
+    opacity: 0.7;
+    transform: translateX(-8px) scale(0.98);
+    filter: blur(1px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0) scale(1);
+    filter: blur(0);
+  }
+}
+
+@keyframes slideInRight {
+  from {
+    opacity: 0;
+    transform: translateX(40px) scale(0.94);
+    filter: blur(3px);
+  }
+  50% {
+    opacity: 0.7;
+    transform: translateX(8px) scale(0.98);
+    filter: blur(1px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0) scale(1);
+    filter: blur(0);
+  }
+}
+
+@keyframes breathe {
+  0%, 100% {
+    transform: scale(1);
+    opacity: 0.7;
+  }
+  50% {
+    transform: scale(1.08);
+    opacity: 1;
+  }
+}
+
+@keyframes gradientShift {
+  0%, 100% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+}
+
+@keyframes shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+@keyframes gentleFloat {
+  0%, 100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-2px);
+  }
+}
+
+.chat-message {
+  animation: fadeInUp 0.7s cubic-bezier(0.23, 1, 0.32, 1);
+}
+
+.chat-message-user {
+  animation: slideInRight 0.6s cubic-bezier(0.23, 1, 0.32, 1);
+}
+
+.chat-message-agent {
+  animation: slideInLeft 0.6s cubic-bezier(0.23, 1, 0.32, 1);
+}
+
+/* Enhanced button styles */
+.marble-button {
+  background: var(--gradient-card);
+  border: 1px solid var(--marble-200);
+  box-shadow: var(--shadow-soft);
+  backdrop-filter: blur(12px) saturate(160%);
+  border-radius: 16px;
+  padding: 14px 28px;
+  font-weight: 600;
+  font-size: 1rem;
+  color: var(--foreground);
+  transition: all 0.3s cubic-bezier(0.23, 1, 0.32, 1);
+  position: relative;
+  overflow: hidden;
+  letter-spacing: -0.01em;
+}
+
+.marble-button::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
+  transition: left 0.5s ease;
+}
+
+.marble-button:hover::before {
+  left: 100%;
+}
+
+.marble-button:hover {
+  transform: translateY(-3px) scale(1.02);
+  box-shadow: var(--shadow-large);
+  border-color: var(--accent-blue);
+}
+
+.marble-button:active {
+  transform: translateY(-1px) scale(0.98);
+}
+
+.marble-button-primary {
+  background: linear-gradient(135deg, var(--accent-blue), var(--accent-emerald));
+  color: white;
+  border: none;
+  font-weight: 650;
+  box-shadow: var(--shadow-accent);
+}
+
+.marble-button-primary:hover {
+  background: linear-gradient(135deg, var(--accent-emerald), var(--accent-blue));
+  box-shadow: var(--shadow-large);
+  transform: translateY(-3px) scale(1.03);
+}
+
+/* Executive-friendly spacing */
+.executive-spacing {
+  padding: 2rem 2.5rem;
+}
+
+.executive-spacing-large {
+  padding: 3rem 3.5rem;
+}
+
+.executive-card-spacing {
+  padding: 2rem;
+  margin-bottom: 2rem;
+}
+
+/* Enhanced status indicators */
+.status-indicator-enhanced {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  box-shadow: 0 0 0 2px var(--background);
+}
+
+.status-indicator-enhanced::after {
+  content: '';
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  border-radius: inherit;
+  animation: statusPulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+.status-active-enhanced {
+  background: linear-gradient(135deg, #10b981, #059669);
+}
+
+.status-limited-enhanced {
+  background: linear-gradient(135deg, #f59e0b, #d97706);
+}
+
+.status-error-enhanced {
+  background: linear-gradient(135deg, #ef4444, #dc2626);
+}
+
+/* Enhanced glass effect */
+.glass-effect-enhanced {
+  backdrop-filter: blur(20px) saturate(180%);
+  background: rgba(255, 255, 255, 0.9);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  box-shadow: 
+    inset 0 1px 0 0 rgba(255, 255, 255, 0.5),
+    0 1px 8px 0 rgba(0, 0, 0, 0.12),
+    0 4px 16px 0 rgba(0, 0, 0, 0.08);
+  border-radius: 16px;
+}
+
+.glass-effect-enhanced-dark {
+  backdrop-filter: blur(20px) saturate(180%);
+  background: rgba(0, 0, 0, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  box-shadow: 
+    inset 0 1px 0 0 rgba(255, 255, 255, 0.15),
+    0 1px 8px 0 rgba(0, 0, 0, 0.4),
+    0 4px 16px 0 rgba(0, 0, 0, 0.3);
+  border-radius: 16px;
+}
+
+.marble-shimmer {
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(255, 255, 255, 0.4),
+    transparent
+  );
+  background-size: 200% 100%;
+  animation: shimmer 2s infinite;
+}
+
+.marble-float {
+  animation: gentleFloat 3s ease-in-out infinite;
+}
+
+/* Enhanced typing indicator */
+@keyframes typingPulse {
+  0%, 100% {
+    opacity: 0.4;
+    transform: scale(0.8);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.typing-indicator {
+  animation: breathe 2s ease-in-out infinite;
+}
+
+.typing-dot {
+  animation: typingPulse 1.4s ease-in-out infinite;
+}
+
+.typing-dot:nth-child(2) {
+  animation-delay: 0.2s;
+}
+
+.typing-dot:nth-child(3) {
+  animation-delay: 0.4s;
+}
+
+/* Hover animations */
+.hover-lift {
+  transition: transform 0.2s ease-out, box-shadow 0.2s ease-out;
+}
+
+.hover-lift:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-medium);
+}
+
+/* Status pulse animation */
+@keyframes statusPulse {
+  0%, 100% {
+    opacity: 1;
+    box-shadow: 0 0 0 0 currentColor;
+  }
+  50% {
+    opacity: 0.8;
+    box-shadow: 0 0 0 4px transparent;
+  }
+}
