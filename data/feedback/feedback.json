@@ -1,0 +1,15 @@
+[
+  {
+    "feedback_id": "317aa146-8e84-4229-9ad0-8e02993257b6",
+    "insight_id": "test_task_123",
+    "user_id": "test_user",
+    "timestamp": "2025-06-29T04:16:57.698545",
+    "feedback_type": "rating",
+    "rating": 5,
+    "thumbs_up": null,
+    "text_feedback": "This is great!",
+    "structured_feedback": null,
+    "expected_vs_actual": null,
+    "metadata": {}
+  }
+]

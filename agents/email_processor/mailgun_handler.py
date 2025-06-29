@@ -15,6 +15,10 @@ import base64
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 import pandas as pd
+from pydantic import ValidationError
+
+from .models import FeedbackRequest
+from insights.feedback_engine import InsightFeedbackEngine, FeedbackType
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -198,6 +202,9 @@ def create_app(config: Dict) -> Flask:
     # Initialize webhook handler
     webhook_handler = MailgunWebhookHandler(config)
     
+    # Initialize Feedback Engine
+    feedback_engine = InsightFeedbackEngine()
+
     @app.route('/webhook/mailgun', methods=['POST'])
     def mailgun_webhook():
         """Handle Mailgun webhook requests."""
@@ -226,6 +233,34 @@ def create_app(config: Dict) -> Flask:
         """Health check endpoint."""
         return jsonify({'status': 'healthy', 'service': 'vendora-mailgun-handler'}), 200
     
+    @app.route('/api/v1/task/<task_id>/feedback', methods=['POST'])
+    def task_feedback(task_id: str):
+        """Receive feedback for a task."""
+        try:
+            feedback_data = FeedbackRequest(**request.json)
+        except ValidationError as e:
+            return jsonify({"error": "Invalid request body", "details": e.errors()}), 400
+        except Exception as e:
+            logger.error(f"Error parsing feedback request: {e}")
+            return jsonify({"error": "Invalid request body"}), 400
+
+        try:
+            feedback_id = feedback_engine.add_feedback(
+                insight_id=task_id,  # Assuming task_id corresponds to insight_id
+                user_id=feedback_data.user_id,
+                feedback_type=feedback_data.feedback_type,
+                rating=feedback_data.rating,
+                thumbs_up=feedback_data.thumbs_up,
+                text_feedback=feedback_data.text_feedback,
+                structured_feedback=feedback_data.structured_feedback,
+                expected_vs_actual=feedback_data.expected_vs_actual,
+                metadata=feedback_data.metadata
+            )
+            return jsonify({"message": "Feedback received", "feedback_id": feedback_id, "task_id": task_id}), 201
+        except Exception as e:
+            logger.error(f"Error adding feedback for task {task_id}: {e}")
+            return jsonify({"error": "Failed to process feedback"}), 500
+
     return app
 
 
