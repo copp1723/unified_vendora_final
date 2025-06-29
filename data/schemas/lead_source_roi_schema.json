@@ -1,0 +1,7 @@
+[
+  {"name": "LeadSource", "type": "STRING", "mode": "NULLABLE"},
+  {"name": "Cost", "type": "STRING", "mode": "NULLABLE"},
+  {"name": "TotalGross", "type": "STRING", "mode": "NULLABLE"},
+  {"name": "ROI", "type": "STRING", "mode": "NULLABLE"},
+  {"name": "Month", "type": "STRING", "mode": "NULLABLE"}
+]

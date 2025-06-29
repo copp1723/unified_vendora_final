@@ -6,8 +6,10 @@ Orchestrates the complete Q&A pipeline using SuperMemory context and OpenRouter 
 import os
 import json
 import logging
+import re
 from typing import Dict, List, Optional, Any
 from datetime import datetime
+from pathlib import Path
 
 from .supermemory_client import SuperMemoryClient
 from .openrouter_client import OpenRouterClient
@@ -29,29 +31,39 @@ class ConversationAgent:
         # Data storage path for accessing processed insights
         self.data_storage_path = config.get('DATA_STORAGE_PATH', '/tmp/vendora_data')
     
+    def _validate_dealer_id(self, dealer_id: str) -> bool:
+        """Validate dealer ID format for security."""
+        if not dealer_id or not isinstance(dealer_id, str):
+            return False
+        # Allow alphanumeric and hyphens only
+        return bool(re.match(r'^[a-zA-Z0-9-_]+$', dealer_id)) and len(dealer_id) <= 50
+    
     def get_dealer_insights(self, dealer_id: str, limit: int = 10) -> List[Dict[str, Any]]:
         """Get recent processed insights for a dealer."""
         try:
-            processed_dir = os.path.join(self.data_storage_path, 'processed')
+            if not self._validate_dealer_id(dealer_id):
+                logger.error(f"Invalid dealer_id format: {dealer_id}")
+                return []
+            
+            processed_dir = Path(self.data_storage_path) / 'processed'
             insights = []
             
-            if not os.path.exists(processed_dir):
+            if not processed_dir.exists():
                 return []
             
             # Find all processed files for this dealer
-            for filename in os.listdir(processed_dir):
-                if filename.startswith(dealer_id) and filename.endswith('_processed.json'):
-                    file_path = os.path.join(processed_dir, filename)
-                    try:
-                        with open(file_path, 'r') as f:
-                            data = json.load(f)
+            for file_path in processed_dir.glob(f"{dealer_id}_*_processed.json"):
+                try:
+                    with open(file_path, 'r') as f:
+                        data = json.load(f)
+                        if isinstance(data, dict):  # Validate JSON structure
                             insights.append(data)
-                    except Exception as e:
-                        logger.error(f"Error reading processed file {file_path}: {e}")
+                except (json.JSONDecodeError, IOError) as e:
+                    logger.error(f"Error reading processed file {file_path}: {e}")
             
             # Sort by timestamp and return most recent
             insights.sort(key=lambda x: x.get('processed_timestamp', ''), reverse=True)
-            return insights[:limit]
+            return insights[:min(limit, 100)]  # Cap at 100 for safety
             
         except Exception as e:
             logger.error(f"Error getting dealer insights for {dealer_id}: {e}")
@@ -60,7 +72,16 @@ class ConversationAgent:
     def process_query(self, dealer_id: str, query: str, model: Optional[str] = None) -> Dict[str, Any]:
         """Process a natural language query about automotive data."""
         try:
-            logger.info(f"Processing query for dealer {dealer_id}: {query}")
+            if not self._validate_dealer_id(dealer_id):
+                return {'error': 'Invalid dealer ID format', 'status': 'failed'}
+            
+            if not query or len(query.strip()) == 0:
+                return {'error': 'Query cannot be empty', 'status': 'failed'}
+            
+            if len(query) > 2000:  # Reasonable query length limit
+                return {'error': 'Query too long', 'status': 'failed'}
+            
+            logger.info(f"Processing query for dealer {dealer_id}: {query[:100]}...")
             
             # Get dealer context from SuperMemory
             dealer_context = self.supermemory.get_dealer_context(dealer_id)
@@ -106,6 +127,9 @@ class ConversationAgent:
     def get_dealer_summary(self, dealer_id: str, model: Optional[str] = None) -> Dict[str, Any]:
         """Get a comprehensive summary of dealer performance and insights."""
         try:
+            if not self._validate_dealer_id(dealer_id):
+                return {'error': 'Invalid dealer ID format', 'status': 'failed'}
+            
             logger.info(f"Generating summary for dealer {dealer_id}")
             
             # Get dealer context
@@ -138,6 +162,14 @@ class ConversationAgent:
     def update_dealer_preferences(self, dealer_id: str, preferences: Dict[str, Any]) -> bool:
         """Update dealer preferences in SuperMemory."""
         try:
+            if not self._validate_dealer_id(dealer_id):
+                logger.error(f"Invalid dealer_id format: {dealer_id}")
+                return False
+            
+            if not isinstance(preferences, dict):
+                logger.error("Preferences must be a dictionary")
+                return False
+            
             return self.supermemory.store_dealer_preferences(dealer_id, preferences)
         except Exception as e:
             logger.error(f"Error updating dealer preferences: {e}")
@@ -146,6 +178,10 @@ class ConversationAgent:
     def get_dealer_preferences(self, dealer_id: str) -> Dict[str, Any]:
         """Get dealer preferences from SuperMemory."""
         try:
+            if not self._validate_dealer_id(dealer_id):
+                logger.error(f"Invalid dealer_id format: {dealer_id}")
+                return {}
+            
             return self.supermemory.get_dealer_preferences(dealer_id) or {}
         except Exception as e:
             logger.error(f"Error getting dealer preferences: {e}")
@@ -154,6 +190,13 @@ class ConversationAgent:
     def get_conversation_history(self, dealer_id: str, days: int = 30) -> List[Dict[str, Any]]:
         """Get recent conversation history for a dealer."""
         try:
+            if not self._validate_dealer_id(dealer_id):
+                logger.error(f"Invalid dealer_id format: {dealer_id}")
+                return []
+            
+            # Limit days to reasonable range
+            days = max(1, min(days, 365))
+            
             return self.supermemory.get_recent_queries(dealer_id, days)
         except Exception as e:
             logger.error(f"Error getting conversation history: {e}")

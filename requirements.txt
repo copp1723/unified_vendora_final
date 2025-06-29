@@ -38,6 +38,8 @@ tenacity==8.2.3
 
 # Logging and Monitoring
 structlog==23.1.0
+prometheus-fastapi-instrumentator>=6.0.0  # Using a recent version
+google-cloud-logging>=3.0.0  # For centralized logging
 
 # Testing
 pytest==7.4.0

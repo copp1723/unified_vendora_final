@@ -1,0 +1,16 @@
+[
+  {"name": "LeadSource", "type": "STRING"},
+  {"name": "LeadSourceCategory", "type": "STRING"},
+  {"name": "DealNumber", "type": "STRING"},
+  {"name": "SellingPrice", "type": "STRING"},
+  {"name": "FrontGross", "type": "STRING"},
+  {"name": "BackGross", "type": "STRING"},
+  {"name": "TotalGross", "type": "STRING"},
+  {"name": "SalesRepName", "type": "STRING"},
+  {"name": "SplitSalesRep", "type": "STRING"},
+  {"name": "VehicleYear", "type": "INTEGER"},
+  {"name": "VehicleMake", "type": "STRING"},
+  {"name": "VehicleModel", "type": "STRING"},
+  {"name": "VehicleStockNumber", "type": "STRING"},
+  {"name": "VehicleVIN", "type": "STRING"}
+]

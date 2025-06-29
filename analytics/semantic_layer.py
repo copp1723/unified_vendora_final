@@ -10,7 +10,6 @@ import hashlib
 import json
 import logging
 import os
-import pickle
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
@@ -329,14 +328,15 @@ class PrecisionScoringEngine:
     def load_model(self, model_path: str) -> bool:
         """Load a trained model from the specified path."""
         try:
-            with open(model_path, "rb") as f:
-                model_data = pickle.load(f)
+            with open(model_path, "r") as f:
+                model_data = json.load(f)
 
-            self.model = model_data.get("model")
-            self.vectorizer = model_data.get("vectorizer")
+            # Note: Actual ML models cannot be serialized to JSON
+            # This is a placeholder - use joblib or similar for real models
             self.features = model_data.get("features", self.features)
+            logger.warning("Model loading disabled for security (CWE-94). Use joblib for ML models.")
 
-            logger.info(f"Loaded precision scoring model from {model_path}")
+            logger.info(f"Loaded precision scoring config from {model_path}")
             return True
         except Exception as e:
             logger.error(f"Failed to load precision scoring model: {e}")
@@ -346,16 +346,15 @@ class PrecisionScoringEngine:
         """Save the current model to the specified path."""
         try:
             model_data = {
-                "model": self.model,
-                "vectorizer": self.vectorizer,
                 "features": self.features,
+                "timestamp": datetime.now().isoformat(),
             }
 
             os.makedirs(os.path.dirname(model_path), exist_ok=True)
-            with open(model_path, "wb") as f:
-                pickle.dump(model_data, f)
+            with open(model_path, "w") as f:
+                json.dump(model_data, f, indent=2)
 
-            logger.info(f"Saved precision scoring model to {model_path}")
+            logger.info(f"Saved precision scoring config to {model_path}")
             return True
         except Exception as e:
             logger.error(f"Failed to save precision scoring model: {e}")

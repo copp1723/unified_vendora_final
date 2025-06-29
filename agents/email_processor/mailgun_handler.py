@@ -276,5 +276,5 @@ if __name__ == '__main__':
     
     # Create and run the app
     app = create_app(config)
-    app.run(host='0.0.0.0', port=5000, debug=True)
+    app.run(host='0.0.0.0', port=5000, debug=False)
 

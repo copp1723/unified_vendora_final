@@ -35,7 +35,10 @@ class BaseSpecialistAgent:
         
         try:
             # Initialize Gemini
+<<<<<<< HEAD
             genai.configure(api_key=self.config.get("gemini_api_key"))
+=======
+>>>>>>> b5dd85a (Organize frontend files and remove duplicates)
             self.gemini_model = genai.GenerativeModel(
                 'gemini-pro',
                 generation_config={

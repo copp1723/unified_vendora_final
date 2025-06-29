@@ -1,0 +1,19 @@
+lead_source,listing_price,sold_price,profit,expense,sales_rep_name,vehicle_year,vehicle_make,vehicle_model,days_to_close
+NeoIdentity,"$55,000","$53,500","$3,200","$1,400",John Doe,2022,GMC,Sierra,18
+AutoTrader,"$53,500","$52,000","$3,100",$900,Mike Wilson,2023,GMC,Yukon,14
+GM Financial,"$54,000","$52,300","$3,000","$1,100",Jane Smith,2022,GMC,Yukon,15
+Website,"$49,000","$47,800","$2,200",$850,John Doe,2018,Honda,Accord,30
+NeoIdentity,"$46,000","$44,500","$2,000",$850,Jane Smith,2019,Chevrolet,Silverado,41
+GM Financial,"$43,000","$41,500","$1,900",$700,Mike Wilson,2022,Nissan,Rogue,1
+NeoIdentity,"$40,000","$38,600","$1,700",$650,Alex Johnson,2018,Buick,Encore,11
+CarGurus,"$41,000","$39,500","$1,700",$700,Sam Brown,2018,Toyota,Camry,15
+Marketing Agency,"$39,500","$38,000","$1,500",$600,Laura Garcia,2019,Jeep,Wrangler,25
+Costco,"$36,000","$35,000","$1,500",$700,Tom Roberts,2020,Buick,Envision,15
+AutoTrader,"$37,500","$36,200","$1,500",$600,Tom Roberts,2021,GMC,Acadia,8
+Service Drive,"$38,500","$37,000","$1,300",$500,David Miller,2021,Nissan,Titan,4
+KBB,"$36,000","$34,700","$1,200",$450,Karen Davis,2019,Toyota,Camry,9
+TV Commercial,"$32,000","$30,800","$1,100",$400,David Miller,2021,Toyota,RAV4,30
+CarFax,"$33,500","$32,000","$1,100",$400,Maria Lopez,2022,Ford,F-150,99
+KBB,"$29,000","$27,900","$1,000",$350,Alex Johnson,2021,Honda,Accord,4
+CarFax,"$31,500","$30,300","$1,000",$400,Tom Roberts,2020,Jeep,Grand Cherokee,23
+NeoIdentity,"$28,000","$27,000",$900,$300,Jane Smith,2017,Honda,CR-V,6

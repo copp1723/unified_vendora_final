@@ -1,0 +1,15 @@
+{
+  "dependencies": {
+    "@google-cloud/aiplatform": "^4.2.0"
+  },
+  "name": "vendora_unified",
+  "version": "1.0.0",
+  "description": "A unified codebase consolidating components from multiple VENDORA projects for building an AI-powered analytics platform.",
+  "main": "frontend_auth_example.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC"
+}

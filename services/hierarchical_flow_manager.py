@@ -17,6 +17,10 @@ from tenacity import retry, stop_after_attempt, wait_exponential
 import google.generativeai as genai
 from google.cloud import bigquery
 from google.oauth2 import service_account
+<<<<<<< HEAD
+=======
+from prometheus_client import Counter, Gauge, Histogram
+>>>>>>> b5dd85a (Organize frontend files and remove duplicates)
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -152,7 +156,35 @@ class HierarchicalFlowManager:
             "avg_processing_time_ms": 0,
             "complexity_distribution": {}
         }
+<<<<<<< HEAD
         
+=======
+
+        # Prometheus Metrics
+        self.prom_active_flows = Gauge(
+            'vendora_active_flows',
+            'Number of currently active hierarchical flows'
+        )
+        self.prom_flow_processing_duration_seconds = Histogram(
+            'vendora_flow_processing_duration_seconds',
+            'Processing duration of hierarchical flows in seconds',
+            buckets=[0.1, 0.5, 1, 2.5, 5, 10, 15, 30, 60, 120]  # Example buckets
+        )
+        self.prom_flow_status_total = Counter(
+            'vendora_flow_status_total',
+            'Total number of flows by final status',
+            ['status', 'complexity']
+        )
+        self.prom_cache_hits_total = Counter(
+            'vendora_cache_hits_total',
+            'Total number of cache hits'
+        )
+        self.prom_cache_misses_total = Counter(
+            'vendora_cache_misses_total',
+            'Total number of cache misses'
+        )
+
+>>>>>>> b5dd85a (Organize frontend files and remove duplicates)
     async def initialize(self):
         """Initialize all components of the hierarchy"""
         logger.info("🚀 Initializing Hierarchical Flow Manager")
@@ -275,8 +307,19 @@ class HierarchicalFlowManager:
                 cached_result = self.query_cache[cache_key]
                 logger.info(f"Returning cached result for task {task.id}")
                 cached_result["metadata"]["cached"] = True
+<<<<<<< HEAD
                 return cached_result
             
+=======
+                self.prom_cache_hits_total.inc()
+                # Note: We don't record processing time for cached results here,
+                # as it's not a full flow execution.
+                return cached_result
+            
+            self.prom_cache_misses_total.inc()
+            self.prom_active_flows.inc() # Increment active flows
+
+>>>>>>> b5dd85a (Organize frontend files and remove duplicates)
             # L1: Task ingestion and intelligent dispatch
             logger.info(f"📥 L1: Processing query for task {task.id}")
             flow_state.status = InsightStatus.ANALYZING
@@ -408,9 +451,23 @@ class HierarchicalFlowManager:
             }
             
             # Cache successful results
+<<<<<<< HEAD
             if flow_state.status == InsightStatus.DELIVERED:
                 self.query_cache[cache_key] = response
             
+=======
+            if flow_state.status == InsightStatus.DELIVERED: # Or APPROVED, depending on when we consider it "final"
+                self.query_cache[cache_key] = response
+
+            # Record final status and processing time for Prometheus
+            self.prom_flow_status_total.labels(
+                status=flow_state.status.value,
+                complexity=task.complexity.value
+            ).inc()
+            self.prom_flow_processing_duration_seconds.observe(processing_time / 1000.0)
+            self.prom_active_flows.dec() # Decrement active flows
+
+>>>>>>> b5dd85a (Organize frontend files and remove duplicates)
             return response
             
         except asyncio.TimeoutError:
@@ -421,6 +478,16 @@ class HierarchicalFlowManager:
                 {"timeout": "30s"}
             )
             flow_state.status = InsightStatus.REJECTED
+<<<<<<< HEAD
+=======
+            self.prom_flow_status_total.labels(
+                status=flow_state.status.value, # REJECTED
+                complexity=task.complexity.value # Use last known complexity
+            ).inc()
+            if hasattr(flow_state, 'start_time'): # Ensure start_time is set
+                 self.prom_flow_processing_duration_seconds.observe(flow_state.get_duration_ms() / 1000.0)
+            self.prom_active_flows.dec() # Decrement active flows
+>>>>>>> b5dd85a (Organize frontend files and remove duplicates)
             
             return {
                 "error": "Query processing timed out",
@@ -440,7 +507,18 @@ class HierarchicalFlowManager:
                 {"type": type(e).__name__}
             )
             flow_state.status = InsightStatus.REJECTED
+<<<<<<< HEAD
             
+=======
+            self.prom_flow_status_total.labels(
+                status=flow_state.status.value, # REJECTED
+                complexity=task.complexity.value # Use last known complexity
+            ).inc()
+            if hasattr(flow_state, 'start_time'): # Ensure start_time is set
+                 self.prom_flow_processing_duration_seconds.observe(flow_state.get_duration_ms() / 1000.0)
+            self.prom_active_flows.dec() # Decrement active flows
+
+>>>>>>> b5dd85a (Organize frontend files and remove duplicates)
             return {
                 "error": "An error occurred processing your query",
                 "task_id": task.id,
@@ -487,6 +565,7 @@ class HierarchicalFlowManager:
             if f.status not in [InsightStatus.DELIVERED, InsightStatus.REJECTED]
         ]
         
+<<<<<<< HEAD
         return {
             **self.metrics,
             "active_flows": len(active_flows),
@@ -495,6 +574,23 @@ class HierarchicalFlowManager:
                            if self.metrics["total_queries"] > 0 else 0,
             "cache_size": len(self.query_cache),
             "cache_hit_rate": "Not tracked"  # Would need to implement hit tracking
+=======
+        active_flows_count = len(active_flows)
+        self.prom_active_flows.set(active_flows_count) # Update the Prometheus Gauge
+
+        # The self.metrics dict is still maintained for the existing API endpoint
+        # and internal tracking, but Prometheus metrics are the primary source for monitoring.
+        return {
+            **self.metrics, # This contains total_queries, approved_insights etc.
+            "active_flows": active_flows_count,
+            "total_flows": len(self.flows),
+            "approval_rate": (self.metrics["approved_insights"] / self.metrics["total_queries"])
+                           if self.metrics["total_queries"] > 0 else 0,
+            "cache_size": len(self.query_cache),
+            # Prometheus counters for cache hits/misses are more accurate for hit rate
+            "cache_hit_rate_prometheus": (self.prom_cache_hits_total._value / (self.prom_cache_hits_total._value + self.prom_cache_misses_total._value))
+                                       if (self.prom_cache_hits_total._value + self.prom_cache_misses_total._value) > 0 else 0,
+>>>>>>> b5dd85a (Organize frontend files and remove duplicates)
         }
     
     async def shutdown(self):

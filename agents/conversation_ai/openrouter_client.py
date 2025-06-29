@@ -108,6 +108,9 @@ Always respond in this JSON format:
         """Mask personally identifiable information before sending to AI."""
         import re
         
+        if not isinstance(text, str):
+            return str(text)
+        
         # Mask email addresses
         text = re.sub(r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b', '[EMAIL]', text)
         
@@ -120,6 +123,9 @@ Always respond in this JSON format:
         # Mask credit card patterns
         text = re.sub(r'\b\d{4}[-\s]?\d{4}[-\s]?\d{4}[-\s]?\d{4}\b', '[CARD]', text)
         
+        # Mask VIN numbers (17 characters)
+        text = re.sub(r'\b[A-HJ-NPR-Z0-9]{17}\b', '[VIN]', text)
+        
         return text
     
     def _prepare_context(self, dealer_context: Dict, insights_data: List[Dict], query: str) -> List[Dict]:
@@ -131,33 +137,55 @@ Always respond in this JSON format:
             }
         ]
         
+        # Validate inputs
+        if not isinstance(dealer_context, dict):
+            dealer_context = {}
+        if not isinstance(insights_data, list):
+            insights_data = []
+        if not isinstance(query, str):
+            query = str(query)
+        
         # Add dealer context if available
-        if dealer_context.get('preferences'):
-            context_msg = f"Dealer preferences: {json.dumps(dealer_context['preferences'])}"
-            messages.append({
-                'role': 'system',
-                'content': f"Context: {context_msg}"
-            })
+        if dealer_context.get('preferences') and isinstance(dealer_context['preferences'], dict):
+            try:
+                context_msg = f"Dealer preferences: {json.dumps(dealer_context['preferences'])}"
+                context_msg = self._mask_pii(context_msg)
+                messages.append({
+                    'role': 'system',
+                    'content': f"Context: {context_msg}"
+                })
+            except (TypeError, ValueError) as e:
+                logger.warning(f"Error serializing dealer context: {e}")
         
         # Add recent insights data
         if insights_data:
             # Combine recent insights into context
             recent_insights = []
             for insight in insights_data[:3]:  # Use last 3 insights for context
-                if 'insights' in insight:
+                if isinstance(insight, dict) and 'insights' in insight:
                     recent_insights.append(insight['insights'])
             
             if recent_insights:
-                insights_context = f"Recent dealership data insights: {json.dumps(recent_insights)}"
-                # Mask PII before adding to context
-                insights_context = self._mask_pii(insights_context)
-                messages.append({
-                    'role': 'system',
-                    'content': insights_context
-                })
+                try:
+                    insights_context = f"Recent dealership data insights: {json.dumps(recent_insights)}"
+                    # Mask PII before adding to context
+                    insights_context = self._mask_pii(insights_context)
+                    # Limit context size
+                    if len(insights_context) > 5000:
+                        insights_context = insights_context[:5000] + "...[truncated]"
+                    messages.append({
+                        'role': 'system',
+                        'content': insights_context
+                    })
+                except (TypeError, ValueError) as e:
+                    logger.warning(f"Error serializing insights context: {e}")
         
         # Add the user query
         masked_query = self._mask_pii(query)
+        # Limit query length
+        if len(masked_query) > 2000:
+            masked_query = masked_query[:2000] + "...[truncated]"
+        
         messages.append({
             'role': 'user',
             'content': masked_query
@@ -168,6 +196,18 @@ Always respond in this JSON format:
     def answer_question(self, query: str, dealer_context: Dict, insights_data: List[Dict], model: Optional[str] = None) -> Dict[str, Any]:
         """Answer a natural language question about automotive data."""
         try:
+            # Input validation
+            if not query or not isinstance(query, str) or len(query.strip()) == 0:
+                return {
+                    'error': 'Query cannot be empty',
+                    'status': 'failed'
+                }
+            
+            if len(query) > 2000:
+                return {
+                    'error': 'Query too long',
+                    'status': 'failed'
+                }
             # Prepare conversation context
             messages = self._prepare_context(dealer_context, insights_data, query)
             
@@ -188,6 +228,16 @@ Always respond in this JSON format:
                 try:
                     parsed_response = json.loads(content)
                     if isinstance(parsed_response, dict):
+                        # Validate required fields
+                        if 'summary' not in parsed_response:
+                            parsed_response['summary'] = 'Analysis completed'
+                        if 'value_insights' not in parsed_response:
+                            parsed_response['value_insights'] = []
+                        if 'actionable_flags' not in parsed_response:
+                            parsed_response['actionable_flags'] = []
+                        if 'confidence' not in parsed_response:
+                            parsed_response['confidence'] = 'medium'
+                        
                         return {
                             'response': parsed_response,
                             'raw_content': content,

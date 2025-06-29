@@ -31,6 +31,20 @@ class QueryFeatureExtractor:
 
     def extract_features(self, query: str, metadata: Dict[str, Any]) -> Dict[str, float]:
         """Extract query features for precision prediction."""
+      import numpy as np
+import json
+from datetime import datetime
+from typing import Dict, List, Optional, Union, Tuple, Any
+import logging
+
+logger = logging.getLogger(__name__)
+
+
+class QueryPrecisionAnalyzer:
+    """Analyzes query precision based on metadata features."""
+    
+    def extract_features(self, query: str, metadata: Dict[str, Any]) -> Dict[str, float]:
+        """Extract precision features from query and metadata."""
         features = {}
 
         # 1. Schema overlap (what % of terms match schema columns)
@@ -142,8 +156,8 @@ class FeatureVectorizer:
                 "timestamp": datetime.now().isoformat(),
             }
 
-            with open(file_path, "wb") as f:
-                pickle.dump(data, f)
+            with open(file_path, "w") as f:
+                json.dump(data, f, indent=2)
 
             return True
         except Exception as e:
@@ -154,8 +168,8 @@ class FeatureVectorizer:
     def load(cls, file_path: str) -> Optional["FeatureVectorizer"]:
         """Load a vectorizer from a file."""
         try:
-            with open(file_path, "rb") as f:
-                data = pickle.load(f)
+            with open(file_path, "r") as f:
+                data = json.load(f)
 
             if not isinstance(data, dict) or "feature_names" not in data:
                 logger.error(f"Invalid vectorizer format in {file_path}")
@@ -297,6 +311,63 @@ class HeuristicPrecisionModel:
                 operator="<",
                 threshold=0.7,
                 adjustment=-0.1,
+                description="Low rewrite confidence",
+            ),
+            # Related columns rules
+            PrecisionScoringRule(
+                feature="related_columns_coverage",
+                operator="<",
+                threshold=1.0,
+                adjustment=-0.05,
+                description="Missing related columns",
+            ),
+        ]
+
+    def add_rule(self, rule: PrecisionScoringRule) -> None:
+        """Add a custom scoring rule."""
+        self.rules.append(rule)
+
+    def predict(self, features: Dict[str, float]) -> float:
+        """Predict precision score using heuristic rules."""
+        score = self.base_score
+        
+        for rule in self.rules:
+            adjustment, triggered, description = rule.apply(features)
+            if triggered:
+                score += adjustment
+                logger.debug(f"Rule triggered: {description} (adjustment: {adjustment})")
+        
+        # Clamp score to [0, 1] range
+        return max(0.0, min(1.0, score))
+
+    def explain(self, features: Dict[str, float]) -> Dict[str, Any]:
+        """Explain the precision score with rule details."""
+        score = self.base_score
+        triggered_rules = []
+        
+        for rule in self.rules:
+            adjustment, triggered, description = rule.apply(features)
+            if triggered:
+                score += adjustment
+                triggered_rules.append({
+                    "rule": description,
+                    "adjustment": adjustment,
+                    "feature": rule.feature,
+                    "value": features.get(rule.feature, 0.0),
+                })
+        
+        final_score = max(0.0, min(1.0, score))
+        
+        return {
+            "score": final_score,
+            "base_score": self.base_score,
+            "triggered_rules": triggered_rules,
+            "features": features,
+        }ringRule(
+                feature="rewrite_confidence",
+                operator="<",
+                threshold=0.7,
+                adjustment=-0.1,
                 description="Low confidence rewrites",
             ),
             # Related columns rules
@@ -367,8 +438,9 @@ class HeuristicPrecisionModel:
     def load(cls, file_path: str) -> Optional["HeuristicPrecisionModel"]:
         """Load a model from a file."""
         try:
-            with open(file_path, "rb") as f:
-                data = pickle.load(f)
+            # import json  # Use JSON for safe deserialization
+            with open(file_path, "r") as f:
+                data = json.load(f)
 
             if not isinstance(data, dict) or data.get("model_type") != "heuristic":
                 logger.error(f"Invalid model format in {file_path}")
