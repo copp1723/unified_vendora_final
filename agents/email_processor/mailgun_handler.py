@@ -9,8 +9,16 @@ import hmac
 import json
 import logging
 from datetime import datetime
-from typing import Dict, List, Optional, Any
+from typing import Dict, List, Optional
 import base64
+
+from flask import Flask, request, jsonify
+from flask_cors import CORS
+import pandas as pd
+from pydantic import ValidationError
+
+from .models import FeedbackRequest
+from insights.feedback_engine import InsightFeedbackEngine, FeedbackType
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -33,12 +41,13 @@ class MailgunWebhookHandler:
         """Verify Mailgun webhook signature for security."""
         if not self.mailgun_private_key:
             logger.warning("No Mailgun private key configured - skipping signature verification")
-            # In a production environment, you might want to make this False if the key is missing
-            # For now, allowing it to pass if no key is set, to simplify local dev if key is not set up.
             return True
             
         try:
+            # Create the signature string
             signature_string = f"{timestamp}{token}"
+            
+            # Calculate expected signature
             expected_signature = hmac.new(
                 key=self.mailgun_private_key.encode(),
                 msg=signature_string.encode(),
@@ -50,111 +59,58 @@ class MailgunWebhookHandler:
             logger.error(f"Error verifying signature: {e}")
             return False
     
-    def extract_dealer_id(self, email_data: Dict[str, Any]) -> str:
+    def extract_dealer_id(self, email_data: Dict) -> str:
         """Extract dealer ID from email headers or sender."""
-        # Mailgun often sends custom headers as 'message-headers'
-        message_headers_raw = email_data.get('message-headers')
-        dealer_id = None
-
-        if message_headers_raw:
-            try:
-                message_headers = json.loads(message_headers_raw) if isinstance(message_headers_raw, str) else message_headers_raw
-                # Headers are often a list of [name, value] pairs
-                for header_pair in message_headers:
-                    if isinstance(header_pair, list) and len(header_pair) == 2 and header_pair[0].lower() == 'x-dealer-id':
-                        dealer_id = header_pair[1]
-                        break
-            except json.JSONDecodeError:
-                logger.warning("Could not parse message-headers as JSON.")
-            except Exception as e:
-                logger.warning(f"Error processing message-headers: {e}")
-
-
+        # Try to get dealer ID from custom header first
+        dealer_id = email_data.get('X-Dealer-ID')
+        
         if not dealer_id:
-            dealer_id = email_data.get('X-Dealer-ID') # Check top-level if not in message-headers
-
-        if not dealer_id:
-            sender = email_data.get('sender', '') or email_data.get('From', '')
+            # Extract from sender email domain or use a default
+            sender = email_data.get('sender', '')
             if '@' in sender:
                 domain = sender.split('@')[1]
-                dealer_id = domain.replace('.', '_').split('>')[0].strip() # Clean up potential trailing chars
+                # Use domain as dealer ID (simplified approach)
+                dealer_id = domain.replace('.', '_')
             else:
                 dealer_id = 'default_dealer'
         
         return dealer_id
     
-    def extract_csv_attachments(self, email_data: Dict[str, Any]) -> List[Dict[str, Any]]:
+    def extract_csv_attachments(self, email_data: Dict) -> List[Dict]:
         """Extract CSV attachments from email data."""
         attachments = []
         
-        # Mailgun provides attachments in a list under 'attachments'
-        # or as 'attachment-x' for form data. We should primarily rely on 'attachments' if available (JSON).
+        # Check for attachments in the email data
+        attachment_count = int(email_data.get('attachment-count', 0))
         
-        if 'attachments' in email_data and isinstance(email_data['attachments'], list):
-            for attachment_data in email_data['attachments']:
-                content_type = attachment_data.get('content-type', '')
-                filename = attachment_data.get('name', 'unknown.csv') # Mailgun uses 'name' for filename
+        for i in range(1, attachment_count + 1):
+            attachment_key = f'attachment-{i}'
+            content_type_key = f'content-type-{i}'
+            
+            if attachment_key in email_data:
+                content_type = email_data.get(content_type_key, '')
                 
-                if 'csv' in content_type.lower() or filename.lower().endswith('.csv'):
-                    # Content is usually base64 encoded by Mailgun when sent as JSON
-                    # However, the 'content' field might not exist if it's a large file and 'url' is used.
-                    # For this implementation, we assume content is directly available or handled by Mailgun's parsing.
-                    # If Mailgun sends form-data, it might be directly in 'attachment-x'.
-                    # This handler expects the content to be decoded by the FastAPI layer if it's form data.
-                    # For JSON payload, Mailgun might provide 'content' directly (often not for files) or a URL.
-                    # This version will assume 'content' is provided as a string (potentially base64 encoded).
-                    # A more robust solution would handle fetching from 'url' if 'content' is missing.
-
-                    # Mailgun's webhook structure for attachments (when received as JSON) might have 'content'
-                    # but it's often not the actual file content but metadata.
-                    # The actual file content is typically accessed via form fields 'attachment-x'
-                    # or downloaded via a URL provided in the 'attachments' array.
-                    # For simplicity, this example will assume the content is directly available in the `email_data`
-                    # passed to this function, which the FastAPI endpoint will need to prepare.
-                    # Let's assume `email_data` might contain `attachment-1`, `attachment-2` etc.
-                    # if parsed from form-data by FastAPI.
-
-                    # This method needs to be more flexible based on how FastAPI presents the data.
-                    # For now, let's assume the FastAPI endpoint will populate a simplified structure.
-                    # The plan was to adapt `process_webhook` to accept FastAPI's `Request` object.
-                    # The endpoint will extract files and pass them.
-                    # So, this function will receive a list of dicts directly.
-                    pass # This logic will be simplified as the FastAPI endpoint will handle file extraction.
-
-        # Simplified: assume attachments are passed in a specific format by the calling FastAPI endpoint
-        # The FastAPI endpoint will be responsible for extracting file content (e.g., from UploadFile)
-        # and passing it to `process_webhook`, which then calls this.
-        # Let's adjust `process_webhook` and the FastAPI endpoint to handle this.
-        # For now, this function will expect `email_data` to contain a pre-processed list of attachments.
-
-        processed_attachments = []
-        raw_attachments = email_data.get('parsed_attachments', []) # Expecting this from FastAPI layer
-
-        for att in raw_attachments:
-            filename = att.get('filename', 'unknown.csv')
-            content = att.get('content', '') # Expecting decoded content string
-            content_type = att.get('content_type', '')
-
-            if ('csv' in content_type.lower() or filename.lower().endswith('.csv')) and content:
-                 processed_attachments.append({
-                    'filename': filename,
-                    'content': content, # Expecting already decoded string content
-                    'content_type': content_type
-                })
-            elif not content:
-                logger.warning(f"Attachment {filename} has no content.")
-
-        return processed_attachments
-
-    def store_csv_file(self, dealer_id: str, filename: str, content: str) -> Optional[str]:
-        """Store CSV file in the data storage with proper naming convention.
-        Content is expected to be a decoded string.
-        """
+                # Check if it's a CSV file
+                if 'csv' in content_type.lower() or email_data.get(attachment_key, '').endswith('.csv'):
+                    attachments.append({
+                        'filename': email_data.get(attachment_key, f'attachment_{i}.csv'),
+                        'content': email_data.get(f'attachment-{i}', ''),
+                        'content_type': content_type
+                    })
+        
+        return attachments
+    
+    def store_csv_file(self, dealer_id: str, filename: str, content: str) -> str:
+        """Store CSV file in the data storage with proper naming convention."""
+        # Create timestamp for filename
         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-        clean_filename = "".join(c if c.isalnum() or c in ['.', '_', '-'] else '_' for c in filename)
+        
+        # Clean filename
+        clean_filename = filename.replace(' ', '_').replace('..', '_')
         if not clean_filename.endswith('.csv'):
             clean_filename += '.csv'
         
+        # Create storage path following the pattern: /incoming/{dealer_id}/{YYYYMMDD}-{filename}.csv
         storage_filename = f"{timestamp}-{clean_filename}"
         dealer_dir = os.path.join(self.data_storage_path, 'incoming', dealer_id)
         os.makedirs(dealer_dir, exist_ok=True)
@@ -162,10 +118,19 @@ class MailgunWebhookHandler:
         file_path = os.path.join(dealer_dir, storage_filename)
         
         try:
+            # Decode base64 content if needed
             if content:
-                # Content is already a string, write directly
+                try:
+                    # Try to decode as base64 first
+                    decoded_content = base64.b64decode(content).decode('utf-8')
+                except:
+                    # If that fails, treat as plain text
+                    decoded_content = content
+                
+                # Write to file
                 with open(file_path, 'w', encoding='utf-8') as f:
-                    f.write(content)
+                    f.write(decoded_content)
+                
                 logger.info(f"Stored CSV file: {file_path}")
                 return file_path
             else:
@@ -176,72 +141,140 @@ class MailgunWebhookHandler:
             logger.error(f"Error storing CSV file {filename}: {e}")
             return None
     
-    async def process_webhook(self, request_data: Dict[str, Any], parsed_attachments: List[Dict[str, Any]]) -> Dict[str, Any]:
-        """
-        Process incoming Mailgun webhook request.
-        request_data: The parsed JSON or form data from the webhook.
-        parsed_attachments: A list of dictionaries, where each dict has 'filename', 'content' (decoded string), 'content_type'.
-        """
+    def process_webhook(self, request_data: Dict) -> Dict:
+        """Process incoming Mailgun webhook request."""
         try:
-            # Signature verification (assuming signature components are top-level in request_data)
-            # Mailgun usually sends signature data in a 'signature' dictionary for JSON,
-            # or as separate fields ('token', 'timestamp', 'signature') for form data.
-            sig_data = request_data.get('signature', {})
-            token = sig_data.get('token') or request_data.get('token')
-            timestamp = sig_data.get('timestamp') or request_data.get('timestamp')
-            signature = sig_data.get('signature') or request_data.get('signature') # field name from Mailgun is 'signature'
-            
-            if token and timestamp and signature:
-                if not self.verify_signature(token, str(timestamp), signature): # timestamp needs to be string
-                    logger.warning("Invalid signature for webhook request.")
+            # Verify signature if available
+            signature_data = request_data.get('signature', {})
+            if signature_data:
+                token = signature_data.get('token', '')
+                timestamp = signature_data.get('timestamp', '')
+                signature = signature_data.get('signature', '')
+                
+                if not self.verify_signature(token, timestamp, signature):
                     return {'error': 'Invalid signature', 'status': 'failed'}
-            else:
-                # If signature parts are missing, log it. Depending on policy, might reject.
-                logger.warning("Signature components missing in webhook data. Skipping verification.")
-
-
-            # Extract dealer ID from the main body of the request data
-            # This might contain fields like 'sender', 'To', 'From', 'subject', etc.
-            # Also custom headers if Mailgun includes them (e.g. 'message-headers').
+            
+            # Extract dealer ID
             dealer_id = self.extract_dealer_id(request_data)
             logger.info(f"Processing email for dealer: {dealer_id}")
             
-            # Use pre-parsed attachments passed from the FastAPI endpoint
-            # The `extract_csv_attachments` function is now simpler and expects this format.
-            # This avoids MailgunWebhookHandler needing to know about FastAPI's UploadFile.
-            csv_attachments = self.extract_csv_attachments({'parsed_attachments': parsed_attachments})
+            # Extract CSV attachments
+            attachments = self.extract_csv_attachments(request_data)
             
-            if not csv_attachments:
-                logger.info("No CSV attachments found or processed from email")
-                return {'message': 'No valid CSV attachments found', 'status': 'success_no_files'}
+            if not attachments:
+                logger.info("No CSV attachments found in email")
+                return {'message': 'No CSV attachments found', 'status': 'success'}
             
-            stored_files_paths = []
-            for attachment in csv_attachments:
+            # Store each CSV file
+            stored_files = []
+            for attachment in attachments:
                 file_path = self.store_csv_file(
                     dealer_id, 
                     attachment['filename'], 
-                    attachment['content'] # content is already a decoded string
+                    attachment['content']
                 )
                 if file_path:
-                    stored_files_paths.append(file_path)
+                    stored_files.append(file_path)
             
-            logger.info(f"Processed {len(stored_files_paths)} CSV files for dealer {dealer_id}")
+            # Log the processing result
+            logger.info(f"Processed {len(stored_files)} CSV files for dealer {dealer_id}")
             
             # TODO: Trigger data analysis pipeline here
+            # This will be implemented in the next phase
             
             return {
-                'message': f'Successfully processed {len(stored_files_paths)} CSV files',
+                'message': f'Successfully processed {len(stored_files)} CSV files',
                 'dealer_id': dealer_id,
-                'files_processed_count': len(stored_files_paths),
-                'file_paths': stored_files_paths, # Good for debugging/logging
+                'files_processed': len(stored_files),
                 'status': 'success'
             }
             
         except Exception as e:
-            logger.exception(f"Error processing webhook: {e}") # Use logger.exception for stack trace
+            logger.error(f"Error processing webhook: {e}")
             return {'error': str(e), 'status': 'failed'}
 
-# Removed Flask create_app and if __name__ == '__main__' block
-# This file now only contains the MailgunWebhookHandler class.
-# Pandas import was not used, so it's removed. If CSV processing beyond storage is needed later, it can be re-added.
-# json import is used by extract_dealer_id for message-headers.
+
+def create_app(config: Dict) -> Flask:
+    """Create and configure Flask application."""
+    app = Flask(__name__)
+    CORS(app)  # Enable CORS for all routes
+    
+    # Initialize webhook handler
+    webhook_handler = MailgunWebhookHandler(config)
+    
+    # Initialize Feedback Engine
+    feedback_engine = InsightFeedbackEngine()
+
+    @app.route('/webhook/mailgun', methods=['POST'])
+    def mailgun_webhook():
+        """Handle Mailgun webhook requests."""
+        try:
+            # Get request data
+            if request.is_json:
+                data = request.get_json()
+            else:
+                data = request.form.to_dict()
+            
+            # Process the webhook
+            result = webhook_handler.process_webhook(data)
+            
+            # Return response
+            if result.get('status') == 'success':
+                return jsonify(result), 200
+            else:
+                return jsonify(result), 400
+                
+        except Exception as e:
+            logger.error(f"Error in webhook endpoint: {e}")
+            return jsonify({'error': str(e), 'status': 'failed'}), 500
+    
+    @app.route('/health', methods=['GET'])
+    def health_check():
+        """Health check endpoint."""
+        return jsonify({'status': 'healthy', 'service': 'vendora-mailgun-handler'}), 200
+    
+    @app.route('/api/v1/task/<task_id>/feedback', methods=['POST'])
+    def task_feedback(task_id: str):
+        """Receive feedback for a task."""
+        try:
+            feedback_data = FeedbackRequest(**request.json)
+        except ValidationError as e:
+            return jsonify({"error": "Invalid request body", "details": e.errors()}), 400
+        except Exception as e:
+            logger.error(f"Error parsing feedback request: {e}")
+            return jsonify({"error": "Invalid request body"}), 400
+
+        try:
+            feedback_id = feedback_engine.add_feedback(
+                insight_id=task_id,  # Assuming task_id corresponds to insight_id
+                user_id=feedback_data.user_id,
+                feedback_type=feedback_data.feedback_type,
+                rating=feedback_data.rating,
+                thumbs_up=feedback_data.thumbs_up,
+                text_feedback=feedback_data.text_feedback,
+                structured_feedback=feedback_data.structured_feedback,
+                expected_vs_actual=feedback_data.expected_vs_actual,
+                metadata=feedback_data.metadata
+            )
+            return jsonify({"message": "Feedback received", "feedback_id": feedback_id, "task_id": task_id}), 201
+        except Exception as e:
+            logger.error(f"Error adding feedback for task {task_id}: {e}")
+            return jsonify({"error": "Failed to process feedback"}), 500
+
+    return app
+
+
+if __name__ == '__main__':
+    # Load configuration from environment
+    from dotenv import load_dotenv
+    load_dotenv()
+    
+    config = {
+        'MAILGUN_PRIVATE_API_KEY': os.getenv('MAILGUN_PRIVATE_API_KEY'),
+        'DATA_STORAGE_PATH': os.getenv('DATA_STORAGE_PATH', '/tmp/vendora_data')
+    }
+    
+    # Create and run the app
+    app = create_app(config)
+    app.run(host='0.0.0.0', port=5000, debug=True)
+
