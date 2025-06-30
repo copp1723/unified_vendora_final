@@ -1,5 +1,14 @@
 from fastapi import FastAPI, HTTPException, Request, Path, Depends, status
 from pydantic import BaseModel, Field
+# Import fastapi-mcp components (correct imports from documentation)
+try:
+    from fastapi_mcp.site import MCPSite
+    from fastapi_mcp.application import mcp_app
+    MCP_AVAILABLE = True
+except ImportError:
+    MCP_AVAILABLE = False
+    MCPSite = None
+    mcp_app = None
 from typing import Dict, Any, Optional, List
 from datetime import datetime
 import asyncio
@@ -44,11 +53,13 @@ from src.models.api_models import (
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Configuration for the application
-APP_CONFIG = {
-    "title": "VENDORA API",
-    "description": "VENDORA - Automotive AI Data Platform",
-    "version": "1.0.0"
+# Basic configuration for FastAPI-MCP (can be expanded later)
+MCP_CONFIG = {
+    "mcp_title": "VENDORA MCP",
+    "mcp_description": "VENDORA - Automotive AI Data Platform - MCP",
+    "mcp_version": "0.1.0",
+    "allow_summarize": True, # Example: enabling summarize functionality
+    # Add other MCP specific configurations here
 }
 
 # Initialize FastAPI app
@@ -68,8 +79,13 @@ app = FastAPI(
     }
 )
 
-# MCP functionality temporarily disabled for deployment
-# Will be re-enabled once fastapi-mcp package is available
+# Initialize and mount MCP if available
+if MCP_AVAILABLE and MCPSite and mcp_app:
+    mcp_site = MCPSite(config=MCP_CONFIG, fastapi_app=app)
+    app.mount("/mcp", mcp_app)
+    logger.info("✅ MCP integration enabled")
+else:
+    logger.warning("⚠️ MCP integration not available")
 
 # Placeholder for application state/components
 # These will be initialized in the startup event
@@ -104,7 +120,7 @@ async def health():
             "flow_manager": app.state.flow_manager is not None,
             "explainability_engine": app.state.explainability_engine is not None,
             "firebase_auth": True,  # Always true if endpoint is reached
-            "mcp_enabled": False  # Temporarily disabled
+            "mcp_enabled": MCP_AVAILABLE
         },
         "version": "1.0.0"
     }
