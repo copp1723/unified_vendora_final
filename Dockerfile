@@ -35,4 +35,5 @@ EXPOSE 8000
 
 # Define the command to run your app using uvicorn
 # Use the main.py entry point which delegates to src/main.py
-CMD ["python3", "-m", "uvicorn", "src.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# Add verbose logging for container diagnostics
+CMD ["python3", "-m", "uvicorn", "src.main:app", "--host", "0.0.0.0", "--port", "8000", "--log-level", "info", "--access-log"]
