@@ -7,6 +7,7 @@ from typing import Dict, List, Optional, Any, Union
 from datetime import datetime
 from enum import Enum
 from pydantic import BaseModel, Field, validator
+from src.security.input_validator import InputValidator
 
 
 # Enums
@@ -67,6 +68,18 @@ class QueryRequest(BaseModel):
     query: str = Field(..., description="The analytical query to process", min_length=1, max_length=1000)
     dealership_id: str = Field(..., description="Dealership identifier", pattern="^[a-zA-Z0-9_-]+$")
     context: Optional[Dict[str, Any]] = Field(default_factory=dict, description="Additional context for the query")
+    
+    @validator('query')
+    def validate_query(cls, v):
+        return InputValidator.validate_user_query(v)
+    
+    @validator('dealership_id')
+    def validate_dealership_id(cls, v):
+        return InputValidator.validate_dealership_id(v)
+    
+    @validator('context')
+    def validate_context(cls, v):
+        return InputValidator.validate_context_data(v or {})
     
     class Config:
         schema_extra = {
@@ -334,6 +347,22 @@ class CreateUserRequest(BaseModel):
     password: str = Field(..., description="User password", min_length=8)
     display_name: Optional[str] = Field(None, description="Display name")
     dealership_id: Optional[str] = Field(None, description="Dealership to associate with user")
+    
+    @validator('email')
+    def validate_email(cls, v):
+        return InputValidator.validate_email(v)
+    
+    @validator('dealership_id')
+    def validate_dealership_id(cls, v):
+        if v:
+            return InputValidator.validate_dealership_id(v)
+        return v
+    
+    @validator('display_name')
+    def validate_display_name(cls, v):
+        if v and len(v) > 100:
+            raise ValueError("Display name too long")
+        return v
 
 
 class CreateUserResponse(BaseModel):

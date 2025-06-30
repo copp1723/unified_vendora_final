@@ -14,6 +14,9 @@ import re
 from tenacity import retry, stop_after_attempt, wait_exponential
 
 from .hierarchical_flow_manager import AnalyticalTask, DraftInsight
+from src.security.input_validator import InputValidator, SecureQueryBuilder
+from src.cache.redis_cache import RedisCache
+from src.reliability.circuit_breaker import circuit_breaker, CircuitBreakerConfig
 
 logger = logging.getLogger(__name__)
 
@@ -27,7 +30,7 @@ class BaseSpecialistAgent:
         self.gemini_model = None
         self.bigquery_client = None
         self.capabilities = []
-        self.query_cache = {}  # Simple cache for repeated queries
+        self.redis_cache: Optional[RedisCache] = None
         
     async def initialize(self):
         """Initialize the specialist agent"""
@@ -64,6 +67,11 @@ class BaseSpecialistAgent:
                     project=self.config.get('bigquery_project')
                 )
             
+            # Initialize Redis cache
+            redis_url = self.config.get('REDIS_URL', 'redis://localhost:6379')
+            self.redis_cache = RedisCache(redis_url)
+            await self.redis_cache.connect()
+            
             logger.info(f"✅ L2 Specialist {self.agent_id} initialized")
             
         except Exception as e:
@@ -74,15 +82,12 @@ class BaseSpecialistAgent:
     
     def _sanitize_table_name(self, dealership_id: str, table_type: str) -> str:
         """Sanitize table name to prevent SQL injection"""
-        # Only allow alphanumeric and underscores
-        clean_dealership = re.sub(r'[^a-zA-Z0-9_]', '', dealership_id)
-        clean_table = re.sub(r'[^a-zA-Z0-9_]', '', table_type)
-        
-        # Construct safe table name
+        # Use secure validator
+        clean_dealership = InputValidator.validate_dealership_id(dealership_id)
         project = self.config.get('bigquery_project', 'vendora_analytics')
         dataset = f"dealership_{clean_dealership}"
         
-        return f"`{project}.{dataset}.{clean_table}`"
+        return InputValidator.sanitize_table_name(project, dataset, table_type)
     
     async def _get_table_schema(self, dealership_id: str, table_name: str) -> List[Dict[str, str]]:
         """Get actual table schema from BigQuery"""
@@ -228,6 +233,76 @@ class BaseSpecialistAgent:
                                 query_purpose: str) -> Tuple[str, Dict[str, Any]]:
         """Generate secure SQL query for the analysis"""
         
+        # Validate inputs first
+        clean_dealership = InputValidator.validate_dealership_id(task.dealership_id)
+        clean_query = InputValidator.validate_user_query(task.user_query)
+        
+        # Use secure query builder for common patterns
+        query_builder = SecureQueryBuilder(self.config.get('bigquery_project', 'vendora_analytics'))
+        
+        # Check for common query patterns
+        if "sales" in query_purpose.lower():
+            date_filter = None
+            if "last month" in clean_query.lower():
+                date_filter = "last_month"
+            elif "last week" in clean_query.lower():
+                date_filter = "last_week"
+            elif "today" in clean_query.lower():
+                date_filter = "today"
+            
+            sql_query, params = query_builder.build_sales_query(clean_dealership, date_filter)
+        elif "inventory" in query_purpose.lower():
+            status_filter = None
+            if "available" in clean_query.lower():
+                status_filter = "available"
+            elif "sold" in clean_query.lower():
+                status_filter = "sold"
+            
+            sql_query, params = query_builder.build_inventory_query(clean_dealership, status_filter)
+        else:
+            # Fallback to AI generation with validation
+            sql_query = await self._generate_ai_sql_query(task, query_purpose)
+            params = {"dealership_id": clean_dealership}
+        
+        # Validate generated SQL
+        sql_query = InputValidator.validate_sql_query(sql_query)
+        
+        # Check Redis cache first
+        if self.redis_cache:
+            cached_result = await self.redis_cache.get(sql_query, clean_dealership)
+            if cached_result:
+                return sql_query, cached_result
+        
+        # Execute query with timeout and circuit breaker
+        try:
+            if self.bigquery_client:
+                result = await self._execute_bigquery_with_circuit_breaker(
+                    sql_query, clean_dealership, params
+                )
+                
+                # Cache successful results
+                if result["success"] and self.redis_cache:
+                    await self.redis_cache.set(sql_query, clean_dealership, result, ttl=1800)  # 30 min cache
+                
+                return sql_query, result
+            else:
+                # Mock mode
+                return sql_query, self._get_mock_query_result(query_purpose)
+                
+        except Exception as e:
+            logger.error(f"❌ SQL execution error: {str(e)}")
+            return sql_query, {"success": False, "error": str(e), "data": []}
+    
+    def _clean_sql_query(self, query: str) -> str:
+        """Clean and validate SQL query"""
+        # Remove markdown code blocks
+        query = query.strip().replace("```sql", "").replace("```", "").strip()
+        
+        # Use secure validator
+        return InputValidator.validate_sql_query(query)
+    
+    async def _generate_ai_sql_query(self, task: AnalyticalTask, query_purpose: str) -> str:
+        """Generate SQL query using AI with security validation"""
         # Get schemas for available tables
         schemas = {}
         for table in ["sales", "inventory", "customers", "service"]:
@@ -249,65 +324,18 @@ class BaseSpecialistAgent:
         {schema_desc}
         
         Requirements:
-        1. Use parameterized query with @dealership_id = '{task.dealership_id}'
+        1. Use parameterized query with @dealership_id parameter
         2. All table names must use backticks
         3. Include appropriate WHERE clauses for data filtering
         4. Use proper date functions for time-based queries
         5. Include LIMIT clause if querying large datasets
+        6. ONLY use SELECT statements - no INSERT, UPDATE, DELETE, DROP, etc.
         
         Generate ONLY the SQL query, no explanations.
         """
         
         sql_query = await self._call_gemini(sql_prompt)
-        sql_query = self._clean_sql_query(sql_query)
-        
-        # Execute query with timeout
-        try:
-            if self.bigquery_client:
-                # Use parameterized query for security
-                job_config = bigquery.QueryJobConfig(
-                    query_parameters=[
-                        bigquery.ScalarQueryParameter("dealership_id", "STRING", task.dealership_id)
-                    ],
-                    use_query_cache=True,
-                    timeout_ms=10000  # 10 second timeout
-                )
-                
-                query_job = self.bigquery_client.query(sql_query, job_config=job_config)
-                results = query_job.result(timeout=10)  # 10 second timeout
-                
-                # Convert to list of dicts
-                data = []
-                for row in results:
-                    data.append(dict(row))
-                
-                # Limit results for performance
-                if len(data) > 1000:
-                    data = data[:1000]
-                    logger.warning(f"Query results truncated to 1000 rows")
-                
-                return sql_query, {"success": True, "data": data, "row_count": len(data)}
-            else:
-                # Mock mode
-                return sql_query, self._get_mock_query_result(query_purpose)
-                
-        except Exception as e:
-            logger.error(f"❌ SQL execution error: {str(e)}")
-            return sql_query, {"success": False, "error": str(e), "data": []}
-    
-    def _clean_sql_query(self, query: str) -> str:
-        """Clean and validate SQL query"""
-        # Remove markdown code blocks
-        query = query.strip().replace("```sql", "").replace("```", "").strip()
-        
-        # Basic SQL injection prevention
-        dangerous_keywords = ["DROP", "DELETE", "TRUNCATE", "ALTER", "CREATE", "INSERT", "UPDATE"]
-        for keyword in dangerous_keywords:
-            if re.search(rf'\b{keyword}\b', query, re.IGNORECASE):
-                logger.warning(f"Dangerous SQL keyword detected: {keyword}")
-                query = f"-- BLOCKED: {keyword} operation not allowed\n{query}"
-        
-        return query
+        return self._clean_sql_query(sql_query)
     
     def _get_mock_query_result(self, query_purpose: str) -> Dict[str, Any]:
         """Generate mock query results for development"""
@@ -328,12 +356,13 @@ class BaseSpecialistAgent:
                 "row_count": 1
             }
     
+    @circuit_breaker("gemini_api", CircuitBreakerConfig(failure_threshold=3, recovery_timeout=30))
     @retry(
         stop=stop_after_attempt(3),
         wait=wait_exponential(multiplier=1, min=2, max=10)
     )
     async def _call_gemini(self, prompt: str) -> str:
-        """Call Gemini API with retry logic"""
+        """Call Gemini API with circuit breaker and retry logic"""
         try:
             response = self.gemini_model.generate_content(prompt)
             return response.text
@@ -365,11 +394,35 @@ class BaseSpecialistAgent:
             "recommendations": ["Ensure your query is specific and clear"]
         }
     
+    @circuit_breaker("bigquery_api", CircuitBreakerConfig(failure_threshold=5, recovery_timeout=60))
+    async def _execute_bigquery_with_circuit_breaker(self, sql_query: str, dealership_id: str, params: Dict) -> Dict:
+        """Execute BigQuery with circuit breaker protection"""
+        job_config = bigquery.QueryJobConfig(
+            query_parameters=[
+                bigquery.ScalarQueryParameter("dealership_id", "STRING", dealership_id)
+            ] + [bigquery.ScalarQueryParameter(k, "STRING", v) for k, v in params.items() if k != "dealership_id"],
+            use_query_cache=True,
+            timeout_ms=10000
+        )
+        
+        query_job = self.bigquery_client.query(sql_query, job_config=job_config)
+        results = query_job.result(timeout=10)
+        
+        data = [dict(row) for row in results]
+        
+        if len(data) > 1000:
+            data = data[:1000]
+            logger.warning("Query results truncated to 1000 rows")
+        
+        return {"success": True, "data": data, "row_count": len(data)}
+    
     async def shutdown(self):
         """Shutdown the specialist agent"""
         logger.info(f"🛑 Shutting down L2 Specialist: {self.agent_id}")
         if self.bigquery_client:
             self.bigquery_client.close()
+        if self.redis_cache:
+            await self.redis_cache.disconnect()
 
 
 class DataAnalystAgent(BaseSpecialistAgent):

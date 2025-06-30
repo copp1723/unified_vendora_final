@@ -162,31 +162,30 @@ def create_app(app_config: Dict) -> FastAPI:
 
     return fast_app
 
+# Load environment variables and create app instance for deployment
+load_dotenv()
+
+# Configuration
+app_config = {
+    'OPENROUTER_API_KEY': os.getenv('OPENROUTER_API_KEY'),
+    'MAILGUN_PRIVATE_API_KEY': os.getenv('MAILGUN_PRIVATE_API_KEY'),
+    'MAILGUN_DOMAIN': os.getenv('MAILGUN_DOMAIN'),
+    'MAILGUN_SENDING_API_KEY': os.getenv('MAILGUN_SENDING_API_KEY'),
+    'SUPERMEMORY_API_KEY': os.getenv('SUPERMEMORY_API_KEY'),
+    'DATA_STORAGE_PATH': os.getenv('DATA_STORAGE_PATH', './data'),
+    'MEMORY_STORAGE_PATH': os.getenv('MEMORY_STORAGE_PATH', './memory')
+}
+
+# Create the FastAPI app instance (required for uvicorn deployment)
+app = create_app(app_config)
+
 if __name__ == '__main__':
-    # Load environment variables from .env file
-    load_dotenv()
-    
-    # Configuration
-    app_config = {
-        'OPENROUTER_API_KEY': os.getenv('OPENROUTER_API_KEY'),
-        'MAILGUN_PRIVATE_API_KEY': os.getenv('MAILGUN_PRIVATE_API_KEY'),
-        'MAILGUN_DOMAIN': os.getenv('MAILGUN_DOMAIN'),
-        'MAILGUN_SENDING_API_KEY': os.getenv('MAILGUN_SENDING_API_KEY'),
-        'SUPERMEMORY_API_KEY': os.getenv('SUPERMEMORY_API_KEY'),
-        'DATA_STORAGE_PATH': os.getenv('DATA_STORAGE_PATH', './data'),
-        'MEMORY_STORAGE_PATH': os.getenv('MEMORY_STORAGE_PATH', './memory')
-    }
-    
-    # Validate required configuration
+    # Validate required configuration only when running directly
     required_keys = ['OPENROUTER_API_KEY', 'MAILGUN_PRIVATE_API_KEY', 'SUPERMEMORY_API_KEY']
     missing_keys = [key for key in required_keys if not app_config.get(key)]
     
     if missing_keys:
-        logger.critical(f"❌ Missing required configuration: {missing_keys}. Please check your .env file or environment variables.")
-        exit(1)
-    
-    # Create the FastAPI app instance
-    app = create_app(app_config)
+        logger.warning(f"⚠️ Missing optional configuration: {missing_keys}. Some features may be limited.")
     
     # Configuration for Uvicorn server
     host = os.getenv('HOST', '0.0.0.0')

@@ -1,12 +1,12 @@
 from fastapi import FastAPI, HTTPException, Request, Path, Depends, status
-from fastapi_mcp.site import MCPSite
-from fastapi_mcp.application import mcp_app
 from pydantic import BaseModel, Field
 from typing import Dict, Any, Optional, List
 from datetime import datetime
 import asyncio
 import logging
-import re # For input validation
+
+# Import security validation
+from src.security.input_validator import InputValidator
 
 # Import Firebase authentication
 from src.auth.firebase_auth import (
@@ -44,13 +44,11 @@ from src.models.api_models import (
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Basic configuration for FastAPI-MCP (can be expanded later)
-MCP_CONFIG = {
-    "mcp_title": "VENDORA MCP",
-    "mcp_description": "VENDORA - Automotive AI Data Platform - MCP",
-    "mcp_version": "0.1.0",
-    "allow_summarize": True, # Example: enabling summarize functionality
-    # Add other MCP specific configurations here
+# Configuration for the application
+APP_CONFIG = {
+    "title": "VENDORA API",
+    "description": "VENDORA - Automotive AI Data Platform",
+    "version": "1.0.0"
 }
 
 # Initialize FastAPI app
@@ -70,10 +68,8 @@ app = FastAPI(
     }
 )
 
-# Initialize and mount MCP
-# Ensure mcp_app is correctly imported or defined if it's a separate app instance
-mcp_site = MCPSite(config=MCP_CONFIG, fastapi_app=app)
-app.mount("/mcp", mcp_app)
+# MCP functionality temporarily disabled for deployment
+# Will be re-enabled once fastapi-mcp package is available
 
 # Placeholder for application state/components
 # These will be initialized in the startup event
@@ -83,14 +79,14 @@ app.state.explainability_engine = None # Will be instance of ExplainabilityEngin
 app.state.mailgun_handler = None # Will be instance of MailgunHandler
 app.state.config = {} # To store loaded configurations (e.g., from .env)
 
-# --- Utility for input validation (example) ---
-def is_valid_dealership_id(dealership_id: str) -> bool:
-    """Validate dealership_id format."""
-    return bool(re.fullmatch(r"^[a-zA-Z0-9_-]+$", dealership_id))
+# Input validation using secure validator
+def validate_dealership_id(dealership_id: str) -> str:
+    """Validate dealership_id format using secure validator."""
+    return InputValidator.validate_dealership_id(dealership_id)
 
-def is_valid_task_id(task_id: str) -> bool:
-    """Validate task_id format."""
-    return task_id.startswith('TASK-')
+def validate_task_id(task_id: str) -> str:
+    """Validate task_id format using secure validator."""
+    return InputValidator.validate_task_id(task_id)
 
 
 # --- API Endpoints ---
@@ -108,7 +104,7 @@ async def health():
             "flow_manager": app.state.flow_manager is not None,
             "explainability_engine": app.state.explainability_engine is not None,
             "firebase_auth": True,  # Always true if endpoint is reached
-            "mcp_enabled": True
+            "mcp_enabled": False  # Temporarily disabled
         },
         "version": "1.0.0"
     }
@@ -128,24 +124,28 @@ async def process_query(
             detail=ErrorDetail(error="Service unavailable", message="System is not initialized.").dict()
         )
 
-    if not is_valid_dealership_id(payload.dealership_id):
-        raise HTTPException(status_code=400, detail={"error": "Invalid dealership_id format"})
+    try:
+        validated_dealership_id = validate_dealership_id(payload.dealership_id)
+        validated_query = InputValidator.validate_user_query(payload.query)
+        validated_context = InputValidator.validate_context_data(payload.context or {})
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail={"error": "Input validation failed", "message": str(e)})
     
     # Verify user has access to this dealership
     if not current_user.custom_claims.get('admin', False):
-        if current_user.dealership_id != payload.dealership_id:
+        if current_user.dealership_id != validated_dealership_id:
             raise HTTPException(
                 status_code=403, 
-                detail={"error": "Access denied", "message": f"You don't have access to dealership {payload.dealership_id}"}
+                detail={"error": "Access denied", "message": f"You don't have access to dealership {validated_dealership_id}"}
             )
 
     try:
-        # Access flow_manager from app.state
+        # Access flow_manager from app.state with validated inputs
         result = await asyncio.wait_for(
             app.state.flow_manager.process_user_query(
-                user_query=payload.query,
-                dealership_id=payload.dealership_id,
-                user_context=payload.context
+                user_query=validated_query,
+                dealership_id=validated_dealership_id,
+                user_context=validated_context
             ),
             timeout=30.0  # 30 second timeout
         )
@@ -177,10 +177,10 @@ async def process_query(
         return response
 
     except asyncio.TimeoutError:
-        logger.warning(f"Query processing timed out for dealership: {payload.dealership_id}")
+        logger.warning(f"Query processing timed out for dealership: {validated_dealership_id}")
         raise HTTPException(status_code=504, detail={"error": "Query processing timed out", "message": "The analysis is taking longer than expected. Please try a simpler query."})
     except Exception as e:
-        logger.error(f"Error processing query for dealership {payload.dealership_id}: {str(e)}", exc_info=True)
+        logger.error(f"Error processing query for dealership {validated_dealership_id}: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail={"error": "Internal server error", "message": "An unexpected error occurred. Please try again."})
 
 @app.get("/api/v1/task/{task_id}/status", response_model=TaskStatusResponse, tags=["VENDORA API"])
@@ -198,11 +198,13 @@ async def get_task_status(
             detail=ErrorDetail(error="Service unavailable", message="System is not initialized.").dict()
         )
 
-    if not is_valid_task_id(task_id):
-        raise HTTPException(status_code=400, detail={"error": "Invalid task ID format", "message": "Task ID must start with 'TASK-'."})
+    try:
+        validated_task_id = validate_task_id(task_id)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail={"error": "Invalid task ID format", "message": str(e)})
 
     try:
-        status = await app.state.flow_manager.get_flow_status(task_id)
+        status = await app.state.flow_manager.get_flow_status(validated_task_id)
 
         if status:
             # Transform to TaskStatusResponse

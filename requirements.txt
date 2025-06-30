@@ -4,7 +4,7 @@
 # Web Framework - FastAPI (migrated from Flask)
 fastapi>=0.100.0
 uvicorn[standard]>=0.20.0
-fastapi-mcp>=0.1.0  # For MCP integration
+# fastapi-mcp>=0.1.0  # For MCP integration - temporarily disabled
 python-multipart>=0.0.6  # For file uploads
 
 # Google Cloud Services
@@ -20,6 +20,7 @@ python-jose[cryptography]>=3.3.0
 
 # Async Support
 aiohttp==3.8.5
+redis[hiredis]>=4.5.0
 
 # Data Processing
 pandas==2.0.3
@@ -35,6 +36,9 @@ python-dotenv==1.0.0
 
 # Retry Logic
 tenacity==8.2.3
+
+# Circuit Breaker and Reliability
+circuitbreaker>=1.4.0
 
 # Logging and Monitoring
 structlog==23.1.0

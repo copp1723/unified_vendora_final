@@ -17,10 +17,9 @@ from tenacity import retry, stop_after_attempt, wait_exponential
 import google.generativeai as genai
 from google.cloud import bigquery
 from google.oauth2 import service_account
-<<<<<<< HEAD
-=======
 from prometheus_client import Counter, Gauge, Histogram
->>>>>>> b5dd85a (Organize frontend files and remove duplicates)
+from src.cache.redis_cache import RedisCache
+from src.reliability.circuit_breaker import circuit_breaker, CircuitBreakerConfig, circuit_manager
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -148,7 +147,7 @@ class HierarchicalFlowManager:
         self.master_analyst = None  # L3
         self.gemini_model = None  # Gemini API model
         self.bigquery_client = None  # BigQuery client
-        self.query_cache: Dict[str, Any] = {}  # Simple in-memory cache
+        self.redis_cache: Optional[RedisCache] = None  # Redis distributed cache
         self.metrics = {
             "total_queries": 0,
             "approved_insights": 0,
@@ -213,6 +212,11 @@ class HierarchicalFlowManager:
             from .vendora_master_analyst import MasterAnalyst
             self.master_analyst = MasterAnalyst(self.config)
             await self.master_analyst.initialize()
+            
+            # Initialize Redis cache
+            redis_url = self.config.get('REDIS_URL', 'redis://localhost:6379')
+            self.redis_cache = RedisCache(redis_url, default_ttl=3600)
+            await self.redis_cache.connect()
             
             logger.info("✅ Hierarchical Flow Manager initialized")
             
@@ -301,25 +305,17 @@ class HierarchicalFlowManager:
         self.flows[task.id] = flow_state
         
         try:
-            # Check cache first
-            cache_key = self._get_cache_key(user_query, dealership_id)
-            if cache_key in self.query_cache:
-                cached_result = self.query_cache[cache_key]
-                logger.info(f"Returning cached result for task {task.id}")
-                cached_result["metadata"]["cached"] = True
-<<<<<<< HEAD
-                return cached_result
-            
-=======
-                self.prom_cache_hits_total.inc()
-                # Note: We don't record processing time for cached results here,
-                # as it's not a full flow execution.
-                return cached_result
+            # Check Redis cache first
+            if self.redis_cache:
+                cached_result = await self.redis_cache.get(user_query, dealership_id, user_context)
+                if cached_result:
+                    logger.info(f"Returning cached result for task {task.id}")
+                    cached_result["metadata"]["cached"] = True
+                    self.prom_cache_hits_total.inc()
+                    return cached_result
             
             self.prom_cache_misses_total.inc()
-            self.prom_active_flows.inc() # Increment active flows
-
->>>>>>> b5dd85a (Organize frontend files and remove duplicates)
+            self.prom_active_flows.inc()
             # L1: Task ingestion and intelligent dispatch
             logger.info(f"📥 L1: Processing query for task {task.id}")
             flow_state.status = InsightStatus.ANALYZING
@@ -450,14 +446,9 @@ class HierarchicalFlowManager:
                 "cached": False
             }
             
-            # Cache successful results
-<<<<<<< HEAD
-            if flow_state.status == InsightStatus.DELIVERED:
-                self.query_cache[cache_key] = response
-            
-=======
-            if flow_state.status == InsightStatus.DELIVERED: # Or APPROVED, depending on when we consider it "final"
-                self.query_cache[cache_key] = response
+            # Cache successful results in Redis
+            if flow_state.status == InsightStatus.DELIVERED and self.redis_cache:
+                await self.redis_cache.set(user_query, dealership_id, response, user_context, ttl=3600)
 
             # Record final status and processing time for Prometheus
             self.prom_flow_status_total.labels(
@@ -465,9 +456,7 @@ class HierarchicalFlowManager:
                 complexity=task.complexity.value
             ).inc()
             self.prom_flow_processing_duration_seconds.observe(processing_time / 1000.0)
-            self.prom_active_flows.dec() # Decrement active flows
-
->>>>>>> b5dd85a (Organize frontend files and remove duplicates)
+            self.prom_active_flows.dec()
             return response
             
         except asyncio.TimeoutError:
@@ -525,10 +514,7 @@ class HierarchicalFlowManager:
                 "message": "Please try again or contact support if the issue persists"
             }
     
-    def _get_cache_key(self, query: str, dealership_id: str) -> str:
-        """Generate cache key for query results"""
-        cache_data = f"{query.lower().strip()}:{dealership_id}"
-        return hashlib.md5(cache_data.encode()).hexdigest()
+
     
     def _update_avg_processing_time(self, new_time_ms: int):
         """Update rolling average processing time"""
@@ -586,10 +572,8 @@ class HierarchicalFlowManager:
             "total_flows": len(self.flows),
             "approval_rate": (self.metrics["approved_insights"] / self.metrics["total_queries"])
                            if self.metrics["total_queries"] > 0 else 0,
-            "cache_size": len(self.query_cache),
-            # Prometheus counters for cache hits/misses are more accurate for hit rate
-            "cache_hit_rate_prometheus": (self.prom_cache_hits_total._value / (self.prom_cache_hits_total._value + self.prom_cache_misses_total._value))
-                                       if (self.prom_cache_hits_total._value + self.prom_cache_misses_total._value) > 0 else 0,
+            "cache_stats": await self.redis_cache.get_stats() if self.redis_cache else {"connected": False},
+            "circuit_breaker_stats": circuit_manager.get_all_stats(),
 >>>>>>> b5dd85a (Organize frontend files and remove duplicates)
         }
     
@@ -628,8 +612,12 @@ class HierarchicalFlowManager:
         if self.bigquery_client:
             self.bigquery_client.close()
         
+        if self.redis_cache:
+            await self.redis_cache.disconnect()
+        
         # Log final metrics
-        logger.info(f"Final metrics: {json.dumps(self.metrics, indent=2)}")
+        final_stats = await self.get_metrics()
+        logger.info(f"Final metrics: {json.dumps(final_stats, indent=2, default=str)}")
         
         logger.info("✅ Hierarchical Flow Manager shutdown complete")
 
