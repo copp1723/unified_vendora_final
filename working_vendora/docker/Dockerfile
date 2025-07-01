@@ -33,6 +33,10 @@ ENV PORT 8000
 # Expose the port the app runs on
 EXPOSE 8000
 
+# Container health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+    CMD curl -f http://localhost:8000/health || exit 1
+
 # Define the command to run your app using uvicorn
 # Use the main.py entry point which delegates to src/main.py
 # Add verbose logging for container diagnostics
