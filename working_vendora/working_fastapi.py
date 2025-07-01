@@ -1,10 +1,11 @@
 """
 VENDORA Working FastAPI Application
-A clean, functional version that actually works
+Enhanced with L1-L2-L3 Agent System Integration
 """
 
-from fastapi import FastAPI, HTTPException, Request, status
+from fastapi import FastAPI, HTTPException, Request, status, Depends
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 from typing import Dict, Any, Optional, List
 from datetime import datetime
@@ -17,6 +18,11 @@ from dotenv import load_dotenv
 
 # Import our working flow manager
 from minimal_flow_manager import MinimalFlowManager
+
+# Enhanced imports for agent integration
+from agents.email_processor.mailgun_handler import MailgunWebhookHandler
+from agents.data_analyst.enhanced_processor import EnhancedAutomotiveDataProcessor
+from agents.conversation_ai.conversation_agent import ConversationAgent
 
 # Configure logging
 logging.basicConfig(
@@ -78,10 +84,54 @@ class ErrorResponse(BaseModel):
     task_id: Optional[str] = None
     timestamp: datetime = Field(default_factory=datetime.now)
 
+# Enhanced Agent System Models
+class ConversationRequest(BaseModel):
+    query: str = Field(..., min_length=1, description="Natural language query")
+    dealer_id: str = Field(..., min_length=1, description="Dealer identifier")
+    model: Optional[str] = Field(default=None, description="AI model to use")
+
+class ConversationResponse(BaseModel):
+    response: Dict[str, Any]
+    model_used: str
+    dealer_context: Dict[str, Any] = Field(default_factory=dict)
+    insights_count: int = 0
+    status: str
+
+class DataAnalysisRequest(BaseModel):
+    file_path: str = Field(..., description="Path to CSV file")
+    dealer_id: str = Field(..., description="Dealer identifier")
+
+class DataAnalysisResponse(BaseModel):
+    status: str
+    dataset_type: str
+    record_count: int
+    insights: Dict[str, Any]
+    processed_timestamp: str
+
+class AgentHealthResponse(BaseModel):
+    l1_email_processor: str
+    l2_data_analyst: str
+    l3_conversation_ai: str
+    cloud_integration: str
+    overall_status: str
+
 # Application state
 app.state.initialized = False
 app.state.flow_manager = None
 app.state.config = {}
+
+# Enhanced Agent System - Global instances
+mailgun_handler: Optional[MailgunWebhookHandler] = None
+data_processor: Optional[EnhancedAutomotiveDataProcessor] = None
+conversation_agent: Optional[ConversationAgent] = None
+
+# Global storage for tasks and metrics
+tasks: Dict[str, Dict[str, Any]] = {}
+query_metrics = {
+    "total_queries": 0,
+    "successful_queries": 0,
+    "failed_queries": 0,
+}
 
 # Utility functions
 def is_valid_dealership_id(dealership_id: str) -> bool:
@@ -247,10 +297,145 @@ async def get_system_status():
         "timestamp": datetime.now().isoformat()
     }
 
+# Enhanced Agent System Endpoints
+
+@app.post("/webhook/mailgun")
+async def mailgun_webhook(request: Request):
+    """L1 Agent: Handle Mailgun webhook for email processing."""
+    if not mailgun_handler:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Mailgun handler not initialized"
+        )
+    
+    try:
+        # Get raw body and form data
+        body = await request.body()
+        form_data = await request.form()
+        
+        # Process webhook
+        result = await mailgun_handler.handle_webhook(body, dict(form_data))
+        
+        if result.get("status") == "success":
+            return {"status": "ok", "message": "Email processed successfully"}
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=result.get("error", "Email processing failed")
+            )
+            
+    except Exception as e:
+        logger.error(f"Mailgun webhook error: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Webhook processing failed"
+        )
+
+@app.post("/analyze-data", response_model=DataAnalysisResponse)
+async def analyze_data(payload: DataAnalysisRequest):
+    """L2 Agent: Analyze CSV data files."""
+    if not data_processor:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Data processor not initialized"
+        )
+    
+    try:
+        # Process the data file
+        result = await data_processor.process_file(
+            file_path=payload.file_path,
+            dealer_id=payload.dealer_id
+        )
+        
+        return DataAnalysisResponse(
+            status="success",
+            dataset_type=result.get("dataset_type", "unknown"),
+            record_count=result.get("record_count", 0),
+            insights=result.get("insights", {}),
+            processed_timestamp=datetime.now().isoformat()
+        )
+        
+    except Exception as e:
+        logger.error(f"Data analysis error: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Data analysis failed: {str(e)}"
+        )
+
+@app.post("/conversation", response_model=ConversationResponse)
+async def conversation_endpoint(payload: ConversationRequest):
+    """L3 Agent: Natural language conversation interface."""
+    if not conversation_agent:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Conversation agent not initialized"
+        )
+    
+    try:
+        # Process the conversation
+        result = await conversation_agent.process_query(
+            query=payload.query,
+            dealer_id=payload.dealer_id,
+            model=payload.model
+        )
+        
+        return ConversationResponse(
+            response=result.get("response", {}),
+            model_used=result.get("model_used", "unknown"),
+            dealer_context=result.get("dealer_context", {}),
+            insights_count=result.get("insights_count", 0),
+            status="success"
+        )
+        
+    except Exception as e:
+        logger.error(f"Conversation error: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Conversation processing failed: {str(e)}"
+        )
+
+@app.get("/agents/health", response_model=AgentHealthResponse)
+async def agents_health():
+    """Check the health status of all agents."""
+    try:
+        # Check each agent's status
+        l1_status = "healthy" if mailgun_handler else "not_initialized"
+        l2_status = "healthy" if data_processor else "not_initialized"
+        l3_status = "healthy" if conversation_agent else "not_initialized"
+        
+        # Check cloud integration
+        cloud_status = "healthy" if app.state.initialized else "not_initialized"
+        
+        # Determine overall status
+        all_agents = [l1_status, l2_status, l3_status, cloud_status]
+        if all(status == "healthy" for status in all_agents):
+            overall_status = "healthy"
+        elif any(status == "healthy" for status in all_agents):
+            overall_status = "degraded"
+        else:
+            overall_status = "unhealthy"
+        
+        return AgentHealthResponse(
+            l1_email_processor=l1_status,
+            l2_data_analyst=l2_status,
+            l3_conversation_ai=l3_status,
+            cloud_integration=cloud_status,
+            overall_status=overall_status
+        )
+        
+    except Exception as e:
+        logger.error(f"Agent health check error: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Health check failed"
+        )
+
 # Application Lifecycle Events
 @app.on_event("startup")
 async def startup_event():
     """Handle application startup."""
+    global mailgun_handler, data_processor, conversation_agent
+    
     logger.info("🚀 Starting VENDORA FastAPI Platform...")
     
     try:
@@ -268,6 +453,33 @@ async def startup_event():
         # Initialize Flow Manager
         app.state.flow_manager = MinimalFlowManager(app.state.config)
         await app.state.flow_manager.initialize()
+        
+        # Initialize Enhanced Agent System
+        try:
+            # Initialize cloud config first
+            from config.cloud_config import CloudConfig
+            cloud_config = CloudConfig()
+            
+            # Initialize L1 Email Processor
+            mailgun_handler = MailgunWebhookHandler(cloud_config)
+            
+            # Initialize L2 Data Analyst
+            data_processor = EnhancedAutomotiveDataProcessor(cloud_config)
+            
+            # Initialize L3 Conversation AI
+            conversation_agent = ConversationAgent(cloud_config)
+            
+            logger.info("✅ Enhanced Agent System initialized successfully")
+            logger.info(f"📧 L1 Email Processor: {'✅ Ready' if mailgun_handler else '❌ Failed'}")
+            logger.info(f"📊 L2 Data Analyst: {'✅ Ready' if data_processor else '❌ Failed'}")
+            logger.info(f"🤖 L3 Conversation AI: {'✅ Ready' if conversation_agent else '❌ Failed'}")
+            
+        except Exception as e:
+            logger.error(f"❌ Failed to initialize agent system: {str(e)}", exc_info=True)
+            # Set agents to None for graceful degradation
+            mailgun_handler = None
+            data_processor = None
+            conversation_agent = None
         
         app.state.initialized = True
         

@@ -1,0 +1,50 @@
+# Prometheus configuration for VENDORA monitoring
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    monitor: 'vendora-monitor'
+    environment: 'production'
+
+# Alerting configuration
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: []
+
+# Load rules
+rule_files:
+  - "alerts.yml"
+
+# Scrape configurations
+scrape_configs:
+  # VENDORA API metrics
+  - job_name: 'vendora-api'
+    static_configs:
+      - targets: ['vendora-app:5001']
+    metrics_path: '/metrics'
+    scrape_interval: 10s
+
+  # Agent performance metrics
+  - job_name: 'vendora-agents'
+    static_configs:
+      - targets: ['vendora-app:5001']
+    metrics_path: '/api/v1/system/metrics'
+    scrape_interval: 30s
+
+  # Prometheus self-monitoring
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+
+  # Node exporter for system metrics
+  - job_name: 'node'
+    static_configs:
+      - targets: ['node-exporter:9100']
+
+# Remote write configuration for long-term storage
+remote_write:
+  - url: "https://prometheus-us-central1.grafana.net/api/prom/push"
+    basic_auth:
+      username: "${GRAFANA_CLOUD_USER}"
+      password: "${GRAFANA_CLOUD_API_KEY}"
