@@ -40,7 +40,7 @@ gcloud services enable containerregistry.googleapis.com
 
 # Build the Docker image
 echo "🏗️  Building Docker image..."
-docker build -t ${IMAGE_NAME} .
+docker build -f working_vendora/docker/Dockerfile -t ${IMAGE_NAME} .
 
 # Push the image to Google Container Registry
 echo "📤 Pushing image to Container Registry..."
